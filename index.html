@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Catatan Keuangan</title>
+  <meta name="description" content="Catat pemasukan dan pengeluaran, bisa dipakai offline.">
+  <meta name="theme-color" content="#0f766e">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>Catatan Keuangan</h1>
+    <button id="installBtn" class="btn-ghost" hidden>Pasang</button>
+  </header>
+
+  <main>
+    <section class="month-nav">
+      <button id="prevMonth" aria-label="Bulan sebelumnya">‹</button>
+      <span id="monthLabel"></span>
+      <button id="nextMonth" aria-label="Bulan berikutnya">›</button>
+    </section>
+
+    <section class="summary">
+      <div class="card balance">
+        <small>Saldo bulan ini</small>
+        <strong id="balance">Rp0</strong>
+      </div>
+      <div class="card in">
+        <small>Pemasukan</small>
+        <strong id="totalIn">Rp0</strong>
+      </div>
+      <div class="card out">
+        <small>Pengeluaran</small>
+        <strong id="totalOut">Rp0</strong>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Pengeluaran per kategori</h2>
+      <div id="breakdown"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Transaksi</h2>
+        <input id="search" type="search" placeholder="Cari…">
+      </div>
+      <ul id="list"></ul>
+      <p id="empty" class="empty">Belum ada transaksi bulan ini.</p>
+    </section>
+
+    <section class="panel tools">
+      <h2>Data</h2>
+      <p class="muted">Data tersimpan di perangkat ini. Ekspor untuk cadangan atau pindah perangkat.</p>
+      <div class="row">
+        <button id="exportBtn" class="btn-ghost">Ekspor JSON</button>
+        <button id="exportCsvBtn" class="btn-ghost">Ekspor CSV</button>
+        <label class="btn-ghost file">Impor JSON<input id="importFile" type="file" accept="application/json" hidden></label>
+      </div>
+    </section>
+  </main>
+
+  <button id="addBtn" class="fab" aria-label="Tambah transaksi">+</button>
+
+  <dialog id="dialog">
+    <form id="form" method="dialog">
+      <h2 id="formTitle">Tambah transaksi</h2>
+      <div class="toggle">
+        <label><input type="radio" name="type" value="out" checked><span>Pengeluaran</span></label>
+        <label><input type="radio" name="type" value="in"><span>Pemasukan</span></label>
+      </div>
+      <label>Jumlah (Rp)
+        <input id="amount" name="amount" inputmode="numeric" autocomplete="off" required placeholder="0">
+      </label>
+      <label>Kategori
+        <select id="category" name="category"></select>
+      </label>
+      <label>Tanggal
+        <input id="date" name="date" type="date" required>
+      </label>
+      <label>Catatan
+        <input id="note" name="note" maxlength="100" placeholder="opsional">
+      </label>
+      <div class="row end">
+        <button type="button" id="deleteBtn" class="btn-danger" hidden>Hapus</button>
+        <span class="spacer"></span>
+        <button type="button" id="cancelBtn" class="btn-ghost">Batal</button>
+        <button type="submit" class="btn-primary">Simpan</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" role="status"></div>
+  <script src="app.js"></script>
+</body>
+</html>
