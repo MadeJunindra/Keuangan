@@ -1,5 +1,5 @@
-// Ganti versi ini setiap kali ada perubahan file supaya cache diperbarui.
-const CACHE = 'keuangan-v4';
+// Naikkan angka ini (dan APP_VERSION di app.js) setiap kali ada perubahan file.
+const CACHE = 'keuangan-v6';
 const ASSETS = [
   './',
   './index.html',
@@ -13,7 +13,10 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
+  // cache: 'reload' = ambil langsung dari server, bukan dari cache browser
+  e.waitUntil(caches.open(CACHE)
+    .then((c) => c.addAll(ASSETS.map((u) => new Request(u, { cache: 'reload' }))))
+    .then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
@@ -24,16 +27,24 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-// Stale-while-revalidate: tampilkan dari cache dulu (cepat & offline), lalu perbarui di belakang.
+// Network-first: kalau ada internet selalu ambil versi terbaru dari server,
+// kalau offline (atau server lambat > 4 detik) pakai salinan di cache.
 self.addEventListener('fetch', (e) => {
-  if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
-  e.respondWith(
-    caches.open(CACHE).then(async (cache) => {
-      const cached = await cache.match(e.request, { ignoreSearch: true });
-      const network = fetch(e.request)
-        .then((res) => { if (res.ok) cache.put(e.request, res.clone()); return res; })
-        .catch(() => cached || (e.request.mode === 'navigate' ? cache.match('./index.html') : undefined));
-      return cached || network;
-    })
-  );
+  const req = e.request;
+  if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
+  e.respondWith((async () => {
+    const cache = await caches.open(CACHE);
+    const fromCache = () => cache.match(req, { ignoreSearch: true })
+      .then((r) => r || (req.mode === 'navigate' ? cache.match('./index.html') : undefined));
+    try {
+      const res = await Promise.race([
+        fetch(req, { cache: 'no-cache' }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000)),
+      ]);
+      if (res.ok) cache.put(req, res.clone());
+      return res;
+    } catch {
+      return (await fromCache()) || Response.error();
+    }
+  })());
 });

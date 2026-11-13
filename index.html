@@ -27,16 +27,17 @@
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
     <symbol id="i-chev-l" viewBox="0 0 24 24"><path d="m15 6-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-chev-r" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
     <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
   </svg>
 
   <header class="topbar">
     <div class="brand">
       <img src="icons/icon-192.png" alt="" width="32" height="32">
-      <div>
+      <button id="nameBtn" class="name-btn" aria-label="Ubah nama">
         <small id="greeting">Halo 👋</small>
-        <h1>Keuangan</h1>
-      </div>
+        <h1><span id="userName">Keuangan</span><svg class="pencil" aria-hidden="true"><use href="#i-pencil"/></svg></h1>
+      </button>
     </div>
     <div class="top-actions">
       <button id="installBtn" class="btn-pill" hidden>Pasang</button>
@@ -125,10 +126,32 @@
         <button id="exportCsvBtn" class="btn-ghost">Ekspor CSV</button>
         <label class="btn-ghost file">Impor JSON<input id="importFile" type="file" accept="application/json" hidden></label>
       </div>
+      <div class="version-row">
+        <span class="muted small">Versi aplikasi <b id="appVersion"></b></span>
+        <button id="checkUpdateBtn" class="link-btn">Cek pembaruan</button>
+      </div>
     </section>
   </main>
 
   <button id="addBtn" class="fab" aria-label="Tambah transaksi"><svg><use href="#i-plus"/></svg></button>
+
+  <!-- Nama pengguna -->
+  <dialog id="nameDialog" class="sheet">
+    <form id="nameForm" method="dialog" class="sheet-form">
+      <div class="grabber" aria-hidden="true"></div>
+      <div class="welcome-art" aria-hidden="true">👋</div>
+      <h2 id="nameTitle" class="center">Selamat datang!</h2>
+      <p id="nameHint" class="muted small center">Siapa nama kamu? Nama ini dipakai untuk menyapa kamu di aplikasi dan hanya tersimpan di HP ini.</p>
+      <label><span class="sr-only">Nama</span>
+        <input id="nameInput" maxlength="24" autocomplete="given-name" autocapitalize="words" placeholder="Nama panggilan kamu">
+      </label>
+      <div class="row end">
+        <button type="button" id="nameSkip" class="btn-ghost">Lewati</button>
+        <span class="spacer"></span>
+        <button type="submit" class="btn-primary" id="nameSubmit">Mulai</button>
+      </div>
+    </form>
+  </dialog>
 
   <!-- Form transaksi -->
   <dialog id="dialog" class="sheet">

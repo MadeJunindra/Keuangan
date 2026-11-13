@@ -467,3 +467,15 @@ body.private .bar-label > span:last-child, body.private .hero-foot b, body.priva
   *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0s !important; transition-duration: .01ms !important; }
   .confetti { display: none; }
 }
+.version-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+
+/* ---- Nama pengguna (v6) ---- */
+.name-btn { border: 0; background: none; padding: 0; text-align: left; color: inherit; min-width: 0; }
+.name-btn h1 { display: flex; align-items: center; gap: 6px; max-width: 52vw; }
+.name-btn h1 span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.name-btn .pencil { width: 14px; height: 14px; color: var(--muted); opacity: .7; }
+.name-btn:active { transform: scale(.97); }
+.center { text-align: center; }
+.welcome-art { font-size: 3rem; text-align: center; transform-origin: 70% 80%; animation: wave 1.6s ease-in-out .4s 2; }
+.welcome-art[hidden], #nameHint[hidden] { display: none; }
+@keyframes wave { 0%, 100% { transform: rotate(0); } 20%, 60% { transform: rotate(16deg); } 40%, 80% { transform: rotate(-10deg); } }

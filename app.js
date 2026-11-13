@@ -423,6 +423,40 @@ document.querySelectorAll('[data-quick]').forEach((b) => b.addEventListener('cli
 // Sapaan sesuai waktu
 { const h = new Date().getHours();
   $('#greeting').textContent = h < 11 ? 'Selamat pagi ☀️' : h < 15 ? 'Selamat siang 🌤️' : h < 19 ? 'Selamat sore 🌇' : 'Selamat malam 🌙'; }
+// Nama pengguna: ditanya sekali saat pertama buka, bisa diubah dengan mengetuk nama
+const NAME_KEY = 'keuangan.name';
+function getName() { try { return localStorage.getItem(NAME_KEY); } catch { return null; } }
+function showName() {
+  const n = getName();
+  $('#userName').textContent = n || 'Keuangan';
+  document.title = n ? `Keuangan ${n}` : 'Catatan Keuangan';
+}
+function openNameForm(first) {
+  const n = getName();
+  $('#nameTitle').textContent = first ? 'Selamat datang!' : 'Ubah nama';
+  $('#nameHint').hidden = !first;
+  $('.welcome-art').hidden = !first;
+  $('#nameSubmit').textContent = first ? 'Mulai' : 'Simpan';
+  $('#nameSkip').textContent = first ? 'Lewati' : 'Batal';
+  $('#nameInput').value = n || '';
+  $('#nameDialog').showModal();
+  setTimeout(() => $('#nameInput').focus(), 300);
+}
+$('#nameBtn').addEventListener('click', () => openNameForm(false));
+$('#nameSkip').addEventListener('click', () => {
+  // "Lewati" tetap dicatat supaya tidak ditanya lagi; nama bisa diisi nanti dengan mengetuk judul
+  if (getName() === null) { try { localStorage.setItem(NAME_KEY, ''); } catch {} }
+  $('#nameDialog').close();
+});
+$('#nameForm').addEventListener('submit', () => {
+  const n = $('#nameInput').value.trim().replace(/\s+/g, ' ');
+  try { localStorage.setItem(NAME_KEY, n); } catch {}
+  showName();
+  if (n) { toast(`Hai, ${n}! 👋`); confetti(40); }
+});
+showName();
+if (getName() === null) setTimeout(() => openNameForm(true), 700);
+
 // Garis bawah header saat halaman digulir
 addEventListener('scroll', () => $('.topbar').classList.toggle('scrolled', scrollY > 8), { passive: true });
 // Mode privasi: sembunyikan semua nominal
@@ -634,15 +668,32 @@ $('#importFile').addEventListener('change', async (e) => {
 });
 
 // ---------- PWA ----------
+const APP_VERSION = '6 · 13 Nov 2026';
+$('#appVersion').textContent = APP_VERSION;
+let swReg = null;
 if ('serviceWorker' in navigator) {
   const hadController = !!navigator.serviceWorker.controller;
-  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').then((reg) => {
-    // iOS sering "menidurkan" aplikasi: cek versi baru setiap kali aplikasi dibuka lagi
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
-  }).catch(() => {}));
+  const checkUpdate = () => swReg?.update().catch(() => {});
+  // updateViaCache 'none': saat cek versi baru, sw.js selalu diambil dari server
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => {
+    swReg = reg;
+    checkUpdate();
+  }).catch(() => {});
+  // iOS sering "menidurkan" aplikasi: cek lagi setiap kali aplikasi kembali dibuka,
+  // saat internet tersambung lagi, dan tiap 30 menit selama aplikasi terbuka.
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) checkUpdate(); });
+  addEventListener('online', checkUpdate);
+  setInterval(checkUpdate, 30 * 60 * 1000);
   navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) $('#updateBar').hidden = false; });
 }
 $('#updateBtn').addEventListener('click', () => location.reload());
+// Tombol manual: paksa cek dan muat ulang
+$('#checkUpdateBtn').addEventListener('click', async () => {
+  if (!navigator.onLine) { toast('Tidak ada internet'); return; }
+  toast('Memeriksa pembaruan…');
+  try { await swReg?.update(); } catch {}
+  setTimeout(() => location.reload(), 800);
+});
 let installPrompt;
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault(); installPrompt = e; $('#installBtn').hidden = false;
