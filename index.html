@@ -5,74 +5,121 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Catatan Keuangan</title>
   <meta name="description" content="Catat pemasukan, pengeluaran, dan tabungan di beberapa rekening. Bisa dipakai offline.">
-  <meta name="theme-color" content="#0f766e">
+  <meta name="theme-color" content="#f6f5f1" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0b100f" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Keuangan">
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="preload" href="fonts/plus-jakarta-sans.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-in" viewBox="0 0 24 24"><path d="M17 7 7 17M7 9v8h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-out" viewBox="0 0 24 24"><path d="M7 17 17 7M9 7h8v8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-transfer" viewBox="0 0 24 24"><path d="M4 8h14l-3-3M20 16H6l3 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-split" viewBox="0 0 24 24"><path d="M12 3v6m0 0-6 6v6m6-12 6 6v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+    <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4M6.6 6.6C3.8 8.4 2 12 2 12s3.5 7 10 7c1.8 0 3.3-.5 4.6-1.2M9.9 9.9a3 3 0 0 0 4.2 4.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
+    <symbol id="i-chev-l" viewBox="0 0 24 24"><path d="m15 6-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-chev-r" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  </svg>
+
   <header class="topbar">
-    <h1>Catatan Keuangan</h1>
-    <button id="installBtn" class="btn-ghost" hidden>Pasang</button>
+    <div class="brand">
+      <img src="icons/icon-192.png" alt="" width="32" height="32">
+      <div>
+        <small id="greeting">Halo 👋</small>
+        <h1>Keuangan</h1>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button id="installBtn" class="btn-pill" hidden>Pasang</button>
+      <button id="privacyBtn" class="icon-btn" aria-label="Sembunyikan nominal" aria-pressed="false">
+        <svg><use href="#i-eye"/></svg>
+      </button>
+    </div>
   </header>
 
   <main>
-    <section class="summary">
-      <div class="card balance">
-        <small>Total saldo semua rekening</small>
-        <strong id="totalBalance">Rp0</strong>
+    <section class="hero reveal">
+      <div class="hero-glow" aria-hidden="true"></div>
+      <small>Total saldo semua rekening</small>
+      <strong id="totalBalance" class="money-val">Rp0</strong>
+      <div class="hero-foot">
+        <span><i class="dot-in"></i>Masuk bulan ini <b id="heroIn">Rp0</b></span>
+        <span><i class="dot-out"></i>Keluar <b id="heroOut">Rp0</b></span>
       </div>
     </section>
 
-    <section class="panel">
-      <div class="panel-head">
+    <nav class="quick reveal" aria-label="Aksi cepat">
+      <button data-quick="in"><span class="q-ico in"><svg><use href="#i-in"/></svg></span>Masuk</button>
+      <button data-quick="out"><span class="q-ico out"><svg><use href="#i-out"/></svg></span>Keluar</button>
+      <button data-quick="transfer"><span class="q-ico tr"><svg><use href="#i-transfer"/></svg></span>Transfer</button>
+      <button id="splitBtn"><span class="q-ico split"><svg><use href="#i-split"/></svg></span>Bagi gaji</button>
+    </nav>
+
+    <section class="block reveal">
+      <div class="block-head">
         <h2>Rekening</h2>
-        <button id="addAccountBtn" class="btn-ghost small">+ Rekening</button>
+        <button id="addAccountBtn" class="link-btn">+ Tambah</button>
       </div>
       <div id="accounts" class="accounts"></div>
-      <button id="splitBtn" class="btn-primary wide">Bagi gaji ke rekening tabungan</button>
     </section>
 
-    <section class="month-nav">
-      <button id="prevMonth" aria-label="Bulan sebelumnya">‹</button>
-      <span id="monthLabel"></span>
-      <button id="nextMonth" aria-label="Bulan berikutnya">›</button>
-    </section>
-
-    <section class="summary">
-      <div class="card in">
-        <small>Pemasukan</small>
-        <strong id="totalIn">Rp0</strong>
+    <section class="block reveal">
+      <div class="block-head">
+        <h2>Ringkasan</h2>
+        <div class="month-nav">
+          <button id="prevMonth" class="icon-btn sm" aria-label="Bulan sebelumnya"><svg><use href="#i-chev-l"/></svg></button>
+          <span id="monthLabel"></span>
+          <button id="nextMonth" class="icon-btn sm" aria-label="Bulan berikutnya"><svg><use href="#i-chev-r"/></svg></button>
+        </div>
       </div>
-      <div class="card out">
-        <small>Pengeluaran</small>
-        <strong id="totalOut">Rp0</strong>
-      </div>
-      <div class="card net">
-        <small>Selisih bulan ini <span class="muted">(transfer antar rekening tidak dihitung)</span></small>
-        <strong id="net">Rp0</strong>
+      <div class="stats">
+        <div class="stat in"><small>Pemasukan</small><strong id="totalIn" class="money-val">Rp0</strong></div>
+        <div class="stat out"><small>Pengeluaran</small><strong id="totalOut" class="money-val">Rp0</strong></div>
+        <div class="stat net"><small>Selisih <span class="muted">· transfer antar rekening tidak dihitung</span></small><strong id="net" class="money-val">Rp0</strong></div>
       </div>
     </section>
 
-    <section class="panel">
-      <h2>Pengeluaran per kategori</h2>
+    <section class="panel reveal">
+      <div class="block-head">
+        <h2>Pemasukan per sumber</h2>
+        <button id="addSourceBtn" class="link-btn">+ Sumber</button>
+      </div>
+      <div id="sources"></div>
+    </section>
+
+    <section class="panel reveal">
+      <div class="block-head"><h2>Pengeluaran per kategori</h2></div>
       <div id="breakdown"></div>
     </section>
 
-    <section class="panel">
-      <div class="panel-head">
+    <section class="panel reveal">
+      <div class="block-head">
         <h2>Transaksi</h2>
-        <input id="search" type="search" placeholder="Cari…">
       </div>
+      <label class="search">
+        <svg><use href="#i-search"/></svg>
+        <input id="search" type="search" placeholder="Cari transaksi…" aria-label="Cari transaksi">
+      </label>
       <div id="chips" class="chips" role="tablist" aria-label="Filter rekening"></div>
       <ul id="list"></ul>
-      <p id="empty" class="empty">Belum ada transaksi bulan ini.</p>
+      <div id="empty" class="empty">
+        <div class="empty-art" aria-hidden="true">🪙</div>
+        <p id="emptyText">Belum ada transaksi bulan ini.</p>
+      </div>
     </section>
 
-    <section class="panel tools">
-      <h2>Data</h2>
-      <p class="muted">Data tersimpan di perangkat ini. Ekspor untuk cadangan atau pindah perangkat.</p>
+    <section class="panel reveal">
+      <div class="block-head"><h2>Data & cadangan</h2></div>
+      <p class="muted small">Data tersimpan di perangkat ini. Ekspor untuk cadangan atau pindah perangkat.</p>
       <div class="row">
         <button id="exportBtn" class="btn-ghost">Ekspor JSON</button>
         <button id="exportCsvBtn" class="btn-ghost">Ekspor CSV</button>
@@ -81,18 +128,21 @@
     </section>
   </main>
 
-  <button id="addBtn" class="fab" aria-label="Tambah transaksi">+</button>
+  <button id="addBtn" class="fab" aria-label="Tambah transaksi"><svg><use href="#i-plus"/></svg></button>
 
   <!-- Form transaksi -->
-  <dialog id="dialog">
-    <form id="form" method="dialog">
+  <dialog id="dialog" class="sheet">
+    <form id="form" method="dialog" class="sheet-form">
+      <div class="grabber" aria-hidden="true"></div>
       <h2 id="formTitle">Tambah transaksi</h2>
       <div class="toggle three">
         <label><input type="radio" name="type" value="out" checked><span>Keluar</span></label>
         <label><input type="radio" name="type" value="in"><span>Masuk</span></label>
         <label><input type="radio" name="type" value="transfer"><span>Transfer</span></label>
       </div>
-      <label>Jumlah (Rp)
+      <label class="amount-field">
+        <span class="sr-only">Jumlah</span>
+        <span class="cur">Rp</span>
         <input id="amount" name="amount" inputmode="numeric" autocomplete="off" required placeholder="0">
       </label>
       <label><span id="accountLabel">Dari rekening</span>
@@ -101,15 +151,17 @@
       <label id="toWrap" hidden>Ke rekening
         <select id="toAccount" name="to"></select>
       </label>
-      <label id="categoryWrap">Kategori
+      <label id="categoryWrap"><span id="categoryLabel">Kategori</span>
         <select id="category" name="category"></select>
       </label>
-      <label>Tanggal
-        <input id="date" name="date" type="date" required>
-      </label>
-      <label>Catatan
-        <input id="note" name="note" maxlength="100" placeholder="opsional">
-      </label>
+      <div class="two">
+        <label>Tanggal
+          <input id="date" name="date" type="date" required>
+        </label>
+        <label>Catatan
+          <input id="note" name="note" maxlength="100" placeholder="opsional">
+        </label>
+      </div>
       <div class="row end">
         <button type="button" id="deleteBtn" class="btn-danger" hidden>Hapus</button>
         <span class="spacer"></span>
@@ -120,29 +172,37 @@
   </dialog>
 
   <!-- Form rekening -->
-  <dialog id="accDialog">
-    <form id="accForm" method="dialog">
+  <dialog id="accDialog" class="sheet">
+    <form id="accForm" method="dialog" class="sheet-form">
+      <div class="grabber" aria-hidden="true"></div>
       <h2 id="accTitle">Tambah rekening</h2>
       <label>Nama / tujuan
         <input id="accName" required maxlength="40" placeholder="mis. Dana Darurat">
       </label>
-      <label>Bank
-        <input id="accBank" maxlength="40" placeholder="mis. BCA">
-      </label>
+      <div class="two">
+        <label>Bank
+          <input id="accBank" maxlength="40" placeholder="mis. BCA">
+        </label>
+        <label>Saldo awal (Rp)
+          <input id="accInitial" inputmode="numeric" class="money" placeholder="0">
+        </label>
+      </div>
       <label>Keterangan
         <input id="accPurpose" maxlength="80" placeholder="opsional">
       </label>
-      <label>Saldo awal (Rp) <small class="muted">saldo saat mulai dicatat</small>
-        <input id="accInitial" inputmode="numeric" class="money" placeholder="0">
-      </label>
-      <label>Target tabungan (Rp) <small class="muted">kosongkan jika tidak ada</small>
-        <input id="accTarget" inputmode="numeric" class="money" placeholder="0">
-      </label>
-      <label>Setoran rutin per bulan (Rp) <small class="muted">dipakai saat "Bagi gaji"</small>
-        <input id="accMonthly" inputmode="numeric" class="money" placeholder="0">
-      </label>
-      <label class="check"><input id="accPayroll" type="checkbox"> Ini rekening payroll (tempat gaji masuk)</label>
-      <div class="colors" id="accColors"></div>
+      <div class="two">
+        <label>Target tabungan
+          <input id="accTarget" inputmode="numeric" class="money" placeholder="tidak ada">
+        </label>
+        <label>Setoran / bulan
+          <input id="accMonthly" inputmode="numeric" class="money" placeholder="0">
+        </label>
+      </div>
+      <label class="check"><input id="accPayroll" type="checkbox"><span>Rekening payroll (tempat gaji masuk)</span></label>
+      <div>
+        <small class="muted">Warna</small>
+        <div class="colors" id="accColors"></div>
+      </div>
       <div class="row end">
         <button type="button" id="accDeleteBtn" class="btn-danger" hidden>Hapus</button>
         <span class="spacer"></span>
@@ -152,20 +212,53 @@
     </form>
   </dialog>
 
+  <!-- Sumber pemasukan -->
+  <dialog id="srcDialog" class="sheet">
+    <form id="srcForm" method="dialog" class="sheet-form">
+      <div class="grabber" aria-hidden="true"></div>
+      <h2 id="srcTitle">Tambah sumber pemasukan</h2>
+      <div class="src-name-row">
+        <label class="icon-label">Ikon
+          <input id="srcIcon" maxlength="4" class="icon-input">
+        </label>
+        <label>Nama sumber
+          <input id="srcName" required maxlength="40" placeholder="mis. Kerja Sampingan">
+        </label>
+      </div>
+      <div class="icon-pick" id="srcIcons">
+        <button type="button">💻</button><button type="button">🎨</button><button type="button">📦</button><button type="button">🛵</button>
+        <button type="button">📸</button><button type="button">🧑‍🏫</button><button type="button">🍰</button><button type="button">📈</button>
+        <button type="button">🏠</button><button type="button">💵</button>
+      </div>
+      <label>Biasanya masuk ke rekening
+        <select id="srcAccount"></select>
+      </label>
+      <div class="row end">
+        <button type="button" id="srcDeleteBtn" class="btn-danger" hidden>Hapus</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn-ghost" data-close>Batal</button>
+        <button type="submit" class="btn-primary">Simpan</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- Bagi gaji -->
-  <dialog id="splitDialog">
-    <form id="splitForm" method="dialog">
+  <dialog id="splitDialog" class="sheet">
+    <form id="splitForm" method="dialog" class="sheet-form">
+      <div class="grabber" aria-hidden="true"></div>
       <h2>Bagi gaji</h2>
-      <p class="muted">Pindahkan uang dari rekening payroll ke rekening tabungan. Setiap baris dicatat sebagai transfer.</p>
-      <label>Dari rekening
-        <select id="splitFrom"></select>
-      </label>
-      <p class="muted" id="splitAvail"></p>
+      <p class="muted small">Pindahkan uang dari rekening payroll ke rekening tabungan. Setiap baris dicatat sebagai transfer.</p>
+      <div class="two">
+        <label>Dari rekening
+          <select id="splitFrom"></select>
+        </label>
+        <label>Tanggal
+          <input id="splitDate" type="date" required>
+        </label>
+      </div>
+      <p class="muted small" id="splitAvail"></p>
       <div id="splitRows"></div>
-      <label>Tanggal
-        <input id="splitDate" type="date" required>
-      </label>
-      <p class="split-total">Total dipindahkan: <b id="splitTotal">Rp0</b></p>
+      <p class="split-total">Total dipindahkan <b id="splitTotal">Rp0</b></p>
       <div class="row end">
         <span class="spacer"></span>
         <button type="button" class="btn-ghost" data-close>Batal</button>
@@ -173,6 +266,11 @@
       </div>
     </form>
   </dialog>
+
+  <div id="updateBar" class="update-bar" hidden>
+    <span>✨ Versi baru tersedia</span>
+    <button id="updateBtn" class="btn-primary">Perbarui</button>
+  </div>
 
   <div id="toast" role="status"></div>
   <script src="app.js"></script>
