@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Catatan Keuangan</title>
-  <meta name="description" content="Catat pemasukan dan pengeluaran, bisa dipakai offline.">
+  <meta name="description" content="Catat pemasukan, pengeluaran, dan tabungan di beberapa rekening. Bisa dipakai offline.">
   <meta name="theme-color" content="#0f766e">
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icons/icon-192.png">
@@ -18,6 +18,22 @@
   </header>
 
   <main>
+    <section class="summary">
+      <div class="card balance">
+        <small>Total saldo semua rekening</small>
+        <strong id="totalBalance">Rp0</strong>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Rekening</h2>
+        <button id="addAccountBtn" class="btn-ghost small">+ Rekening</button>
+      </div>
+      <div id="accounts" class="accounts"></div>
+      <button id="splitBtn" class="btn-primary wide">Bagi gaji ke rekening tabungan</button>
+    </section>
+
     <section class="month-nav">
       <button id="prevMonth" aria-label="Bulan sebelumnya">‹</button>
       <span id="monthLabel"></span>
@@ -25,10 +41,6 @@
     </section>
 
     <section class="summary">
-      <div class="card balance">
-        <small>Saldo bulan ini</small>
-        <strong id="balance">Rp0</strong>
-      </div>
       <div class="card in">
         <small>Pemasukan</small>
         <strong id="totalIn">Rp0</strong>
@@ -36,6 +48,10 @@
       <div class="card out">
         <small>Pengeluaran</small>
         <strong id="totalOut">Rp0</strong>
+      </div>
+      <div class="card net">
+        <small>Selisih bulan ini <span class="muted">(transfer antar rekening tidak dihitung)</span></small>
+        <strong id="net">Rp0</strong>
       </div>
     </section>
 
@@ -49,6 +65,7 @@
         <h2>Transaksi</h2>
         <input id="search" type="search" placeholder="Cari…">
       </div>
+      <div id="chips" class="chips" role="tablist" aria-label="Filter rekening"></div>
       <ul id="list"></ul>
       <p id="empty" class="empty">Belum ada transaksi bulan ini.</p>
     </section>
@@ -66,17 +83,25 @@
 
   <button id="addBtn" class="fab" aria-label="Tambah transaksi">+</button>
 
+  <!-- Form transaksi -->
   <dialog id="dialog">
     <form id="form" method="dialog">
       <h2 id="formTitle">Tambah transaksi</h2>
-      <div class="toggle">
-        <label><input type="radio" name="type" value="out" checked><span>Pengeluaran</span></label>
-        <label><input type="radio" name="type" value="in"><span>Pemasukan</span></label>
+      <div class="toggle three">
+        <label><input type="radio" name="type" value="out" checked><span>Keluar</span></label>
+        <label><input type="radio" name="type" value="in"><span>Masuk</span></label>
+        <label><input type="radio" name="type" value="transfer"><span>Transfer</span></label>
       </div>
       <label>Jumlah (Rp)
         <input id="amount" name="amount" inputmode="numeric" autocomplete="off" required placeholder="0">
       </label>
-      <label>Kategori
+      <label><span id="accountLabel">Dari rekening</span>
+        <select id="account" name="account"></select>
+      </label>
+      <label id="toWrap" hidden>Ke rekening
+        <select id="toAccount" name="to"></select>
+      </label>
+      <label id="categoryWrap">Kategori
         <select id="category" name="category"></select>
       </label>
       <label>Tanggal
@@ -88,8 +113,63 @@
       <div class="row end">
         <button type="button" id="deleteBtn" class="btn-danger" hidden>Hapus</button>
         <span class="spacer"></span>
-        <button type="button" id="cancelBtn" class="btn-ghost">Batal</button>
+        <button type="button" class="btn-ghost" data-close>Batal</button>
         <button type="submit" class="btn-primary">Simpan</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Form rekening -->
+  <dialog id="accDialog">
+    <form id="accForm" method="dialog">
+      <h2 id="accTitle">Tambah rekening</h2>
+      <label>Nama / tujuan
+        <input id="accName" required maxlength="40" placeholder="mis. Dana Darurat">
+      </label>
+      <label>Bank
+        <input id="accBank" maxlength="40" placeholder="mis. BCA">
+      </label>
+      <label>Keterangan
+        <input id="accPurpose" maxlength="80" placeholder="opsional">
+      </label>
+      <label>Saldo awal (Rp) <small class="muted">saldo saat mulai dicatat</small>
+        <input id="accInitial" inputmode="numeric" class="money" placeholder="0">
+      </label>
+      <label>Target tabungan (Rp) <small class="muted">kosongkan jika tidak ada</small>
+        <input id="accTarget" inputmode="numeric" class="money" placeholder="0">
+      </label>
+      <label>Setoran rutin per bulan (Rp) <small class="muted">dipakai saat "Bagi gaji"</small>
+        <input id="accMonthly" inputmode="numeric" class="money" placeholder="0">
+      </label>
+      <label class="check"><input id="accPayroll" type="checkbox"> Ini rekening payroll (tempat gaji masuk)</label>
+      <div class="colors" id="accColors"></div>
+      <div class="row end">
+        <button type="button" id="accDeleteBtn" class="btn-danger" hidden>Hapus</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn-ghost" data-close>Batal</button>
+        <button type="submit" class="btn-primary">Simpan</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Bagi gaji -->
+  <dialog id="splitDialog">
+    <form id="splitForm" method="dialog">
+      <h2>Bagi gaji</h2>
+      <p class="muted">Pindahkan uang dari rekening payroll ke rekening tabungan. Setiap baris dicatat sebagai transfer.</p>
+      <label>Dari rekening
+        <select id="splitFrom"></select>
+      </label>
+      <p class="muted" id="splitAvail"></p>
+      <div id="splitRows"></div>
+      <label>Tanggal
+        <input id="splitDate" type="date" required>
+      </label>
+      <p class="split-total">Total dipindahkan: <b id="splitTotal">Rp0</b></p>
+      <div class="row end">
+        <span class="spacer"></span>
+        <button type="button" class="btn-ghost" data-close>Batal</button>
+        <button type="submit" class="btn-primary">Simpan transfer</button>
       </div>
     </form>
   </dialog>

@@ -1,5 +1,5 @@
 // Ganti versi ini setiap kali ada perubahan file supaya cache diperbarui.
-const CACHE = 'keuangan-v1';
+const CACHE = 'keuangan-v2';
 const ASSETS = [
   './',
   './index.html',

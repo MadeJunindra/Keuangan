@@ -141,3 +141,62 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
   opacity: 0; transition: .2s; pointer-events: none; max-width: calc(100% - 32px);
 }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ---- Rekening (v2) ---- */
+.btn-ghost.small { padding: 6px 12px; font-size: .9rem; }
+.btn-primary.wide { width: 100%; margin-top: 12px; }
+.card.net { grid-column: 1 / -1; }
+.card.net .muted { font-size: .75rem; }
+.accounts { display: grid; gap: 10px; }
+.acc {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  background: var(--bg); border: 1px solid var(--border); border-left: 5px solid var(--c, var(--primary));
+  border-radius: 12px; padding: 12px 14px;
+}
+.acc-top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.acc-name { font-weight: 600; }
+.acc-bal { font-weight: 700; white-space: nowrap; }
+.acc-bal.neg { color: var(--out); }
+.acc-sub { color: var(--muted); font-size: .82rem; margin-top: 2px; overflow-wrap: anywhere; }
+.badge {
+  display: inline-block; font-size: .7rem; padding: 1px 6px; border-radius: 99px; margin-left: 6px;
+  background: var(--c, var(--primary)); color: #fff; vertical-align: middle; font-weight: 600;
+}
+.acc .bar { margin-top: 8px; }
+.acc .bar > i { background: var(--c, var(--primary)); }
+.acc-meta { display: flex; justify-content: space-between; gap: 8px; font-size: .78rem; color: var(--muted); margin-top: 4px; flex-wrap: wrap; }
+
+.chips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 4px; scrollbar-width: none; }
+.chips button {
+  flex: none; padding: 6px 12px; border-radius: 99px; border: 1px solid var(--border);
+  background: var(--surface); cursor: pointer; font-size: .85rem;
+}
+.chips button[aria-selected="true"] { background: var(--primary); border-color: var(--primary); color: #fff; }
+@media (prefers-color-scheme: dark) { .chips button[aria-selected="true"] { color: #0b1210; } }
+
+.tx .acc-tag { display: inline-flex; align-items: center; gap: 4px; }
+.tx .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c); display: inline-block; flex: none; }
+.tx .amt.transfer { color: var(--muted); }
+
+.toggle.three { grid-template-columns: repeat(3, 1fr); }
+.toggle input[value="transfer"]:checked + span { background: var(--primary); border-color: var(--primary); color: #fff; }
+#form label[hidden] { display: none; }
+#accForm, #splitForm { padding: 20px; display: grid; gap: 12px; }
+#accForm h2, #splitForm h2 { margin: 0; }
+#accForm label, #splitForm label { display: grid; gap: 6px; font-size: .9rem; color: var(--muted); }
+#accForm input, #splitForm input, #splitForm select {
+  padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--text); width: 100%;
+}
+#accForm label.check { display: flex; align-items: center; gap: 8px; color: var(--text); }
+#accForm label.check input { width: auto; }
+#splitForm p { margin: 0; }
+.colors { display: flex; gap: 8px; flex-wrap: wrap; }
+.colors button { width: 30px; height: 30px; border-radius: 50%; border: 2px solid transparent; background: var(--c); cursor: pointer; }
+.colors button[aria-pressed="true"] { border-color: var(--text); box-shadow: 0 0 0 2px var(--surface) inset; }
+.split-row { display: grid; grid-template-columns: 1fr 140px; gap: 8px; align-items: center; }
+.split-row span { font-size: .9rem; overflow-wrap: anywhere; }
+.split-row span small { display: block; color: var(--muted); }
+#splitRows { display: grid; gap: 8px; }
+.split-total { font-size: .95rem; }
+dialog { max-height: calc(100dvh - 32px); }
