@@ -182,7 +182,7 @@
           <input id="date" name="date" type="date" required>
         </label>
         <label>Catatan
-          <input id="note" name="note" maxlength="100" placeholder="opsional">
+          <input id="note" autocomplete="off" name="note" maxlength="100" placeholder="opsional">
         </label>
       </div>
       <div class="row end">
@@ -200,18 +200,18 @@
       <div class="grabber" aria-hidden="true"></div>
       <h2 id="accTitle">Tambah rekening</h2>
       <label>Nama / tujuan
-        <input id="accName" required maxlength="40" placeholder="mis. Dana Darurat">
+        <input id="accName" autocomplete="off" required maxlength="40" placeholder="mis. Dana Darurat">
       </label>
       <div class="two">
         <label>Bank
-          <input id="accBank" maxlength="40" placeholder="mis. BCA">
+          <input id="accBank" autocomplete="off" maxlength="40" placeholder="mis. BCA">
         </label>
         <label>Saldo awal (Rp)
           <input id="accInitial" inputmode="numeric" class="money" placeholder="0">
         </label>
       </div>
       <label>Keterangan
-        <input id="accPurpose" maxlength="80" placeholder="opsional">
+        <input id="accPurpose" autocomplete="off" maxlength="80" placeholder="opsional">
       </label>
       <div class="two">
         <label>Target tabungan
@@ -242,10 +242,10 @@
       <h2 id="srcTitle">Tambah sumber pemasukan</h2>
       <div class="src-name-row">
         <label class="icon-label">Ikon
-          <input id="srcIcon" maxlength="4" class="icon-input">
+          <input id="srcIcon" autocomplete="off" maxlength="4" class="icon-input">
         </label>
         <label>Nama sumber
-          <input id="srcName" required maxlength="40" placeholder="mis. Kerja Sampingan">
+          <input id="srcName" autocomplete="off" required maxlength="40" placeholder="mis. Kerja Sampingan">
         </label>
       </div>
       <div class="icon-pick" id="srcIcons">

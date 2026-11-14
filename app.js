@@ -552,10 +552,18 @@ $('#srcForm').addEventListener('submit', (e) => {
   if (!name) { e.preventDefault(); toast('Isi nama sumber'); return; }
   const icon = [...($('#srcIcon').value.trim() || '💵')].slice(0, 2).join('');
   const account = $('#srcAccount').value || undefined;
-  let id = editingSrcId;
+  let id = editingSrcId, moved = 0;
   if (id) {
     const i = CATEGORIES.in.findIndex((c) => c[0] === id);
+    const oldAccount = CATEGORIES.in[i][3];
     CATEGORIES.in[i] = [id, icon, name, account];
+    // Rekening default diganti: tawarkan memindahkan pemasukan lama dari sumber ini juga
+    const past = txs.filter((t) => t.type === 'in' && t.category === id && account && t.account !== account);
+    if (account !== oldAccount && past.length && accById(account) &&
+        confirm(`Pindahkan juga ${past.length} pemasukan "${name}" yang sudah tercatat ke rekening ${accById(account).name}?\n\nPilih "Batal" kalau hanya pemasukan berikutnya yang masuk ke rekening ini.`)) {
+      past.forEach((t) => { t.account = account; });
+      moved = past.length;
+    }
   } else {
     id = uid();
     // Sisipkan sebelum "Lainnya" supaya "Lainnya" tetap di bawah
@@ -563,18 +571,26 @@ $('#srcForm').addEventListener('submit', (e) => {
     CATEGORIES.in.splice(i < 0 ? CATEGORIES.in.length : i, 0, [id, icon, name, account]);
   }
   CATEGORIES.in = CATEGORIES.in.map((c) => (c[3] ? c : c.slice(0, 3)));
-  rebuildCatMap(); save(); render(); toast('Sumber pemasukan disimpan');
+  rebuildCatMap(); save(); render();
+  toast(moved ? `Sumber disimpan, ${moved} pemasukan dipindahkan` : 'Sumber pemasukan disimpan');
   if (srcFromTxForm && $('#dialog').open) {
     fillCategory('in', id);
     if (account && accById(account)) $('#account').value = account;
   }
 });
 $('#srcDeleteBtn').addEventListener('click', () => {
-  const used = txs.filter((t) => t.type === 'in' && t.category === editingSrcId).length;
-  if (used) { alert(`Sumber ini dipakai di ${used} transaksi. Ubah transaksinya dulu, atau cukup ganti nama sumbernya.`); return; }
-  if (!confirm('Hapus sumber pemasukan ini?')) return;
-  CATEGORIES.in = CATEGORIES.in.filter((c) => c[0] !== editingSrcId);
-  rebuildCatMap(); save(); render(); $('#srcDialog').close(); toast('Sumber dihapus');
+  const used = txs.filter((t) => t.type === 'in' && t.category === editingSrcId);
+  const rest = CATEGORIES.in.filter((c) => c[0] !== editingSrcId);
+  // Transaksi yang memakai sumber ini dipindah ke "Lainnya" (atau sumber pertama yang tersisa)
+  const target = rest.find((c) => c[0] === 'lainnya-in') || rest[0];
+  const msg = used.length
+    ? `Sumber ini dipakai di ${used.length} pemasukan.\n\nPemasukan tersebut TIDAK ikut terhapus, tapi dipindahkan ke sumber "${target[2]}". Saldo tidak berubah.\n\nLanjut hapus?`
+    : 'Hapus sumber pemasukan ini?';
+  if (!confirm(msg)) return;
+  used.forEach((t) => { t.category = target[0]; });
+  CATEGORIES.in = rest;
+  rebuildCatMap(); save(); render(); $('#srcDialog').close();
+  toast(used.length ? `Sumber dihapus, ${used.length} pemasukan dipindah ke "${target[2]}"` : 'Sumber dihapus');
 });
 
 // ---------- Bagi gaji ----------
@@ -668,7 +684,7 @@ $('#importFile').addEventListener('change', async (e) => {
 });
 
 // ---------- PWA ----------
-const APP_VERSION = '6 · 13 Nov 2026';
+const APP_VERSION = '7 · 14 Nov 2026';
 $('#appVersion').textContent = APP_VERSION;
 let swReg = null;
 if ('serviceWorker' in navigator) {
