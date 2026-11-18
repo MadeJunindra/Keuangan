@@ -50,11 +50,12 @@
   <main>
     <section class="hero reveal">
       <div class="hero-glow" aria-hidden="true"></div>
-      <small>Total saldo semua rekening</small>
-      <strong id="totalBalance" class="money-val">Rp0</strong>
+      <small>Total kekayaan</small>
+      <strong id="netWorth" class="money-val">Rp0</strong>
+      <div class="split-bar" aria-hidden="true"><i id="splitCash"></i><i id="splitStock"></i></div>
       <div class="hero-foot">
-        <span><i class="dot-in"></i>Masuk bulan ini <b id="heroIn">Rp0</b></span>
-        <span><i class="dot-out"></i>Keluar <b id="heroOut">Rp0</b></span>
+        <span><i class="dot-cash"></i>Saldo kas <b id="totalBalance">Rp0</b></span>
+        <span><i class="dot-stock"></i>Saham <b id="heroStock">Rp0</b> <em id="heroStockPl" class="pl"></em></span>
       </div>
     </section>
 
@@ -65,12 +66,49 @@
       <button id="splitBtn"><span class="q-ico split"><svg><use href="#i-split"/></svg></span>Bagi gaji</button>
     </nav>
 
+    <section id="safeCard" class="safe reveal" hidden>
+      <div class="safe-top">
+        <span class="safe-ico" aria-hidden="true">🛡️</span>
+        <div class="safe-main">
+          <small>Aman dipakai hari ini</small>
+          <strong id="safeToday" class="money-val">Rp0</strong>
+        </div>
+        <span id="safeDays" class="safe-days"></span>
+      </div>
+      <div class="bar"><i id="safeBar"></i></div>
+      <p id="safeInfo" class="safe-info"></p>
+    </section>
+
     <section class="block reveal">
       <div class="block-head">
-        <h2>Rekening</h2>
+        <h2>Saldo Kas</h2>
         <button id="addAccountBtn" class="link-btn">+ Tambah</button>
       </div>
       <div id="accounts" class="accounts"></div>
+    </section>
+
+    <section class="block reveal">
+      <div class="block-head">
+        <h2>Portofolio Saham</h2>
+        <button id="priceBtn" class="link-btn">Perbarui harga</button>
+      </div>
+      <div class="invest">
+        <div class="invest-sum">
+          <div><small>Nilai pasar</small><strong id="stockValue" class="money-val">Rp0</strong></div>
+          <div class="invest-pl"><small>Untung / rugi</small><strong id="stockPl" class="pl">Rp0</strong></div>
+        </div>
+        <div class="invest-meta">
+          <span>Modal <b id="stockCost">Rp0</b></span>
+          <span>Terealisasi <b id="stockRealized" class="pl">Rp0</b></span>
+          <span>Dividen <b id="stockDiv">Rp0</b></span>
+        </div>
+        <div id="holdings"></div>
+        <div class="invest-actions">
+          <button class="btn-ghost" data-trade="buy">📈 Beli</button>
+          <button class="btn-ghost" data-trade="sell">💹 Jual</button>
+          <button class="btn-ghost" data-trade="div">🪙 Dividen</button>
+        </div>
+      </div>
     </section>
 
     <section class="block reveal">
@@ -85,7 +123,7 @@
       <div class="stats">
         <div class="stat in"><small>Pemasukan</small><strong id="totalIn" class="money-val">Rp0</strong></div>
         <div class="stat out"><small>Pengeluaran</small><strong id="totalOut" class="money-val">Rp0</strong></div>
-        <div class="stat net"><small>Selisih <span class="muted">· transfer antar rekening tidak dihitung</span></small><strong id="net" class="money-val">Rp0</strong></div>
+        <div class="stat net"><small>Selisih <span class="muted">· transfer & jual-beli saham tidak dihitung</span></small><strong id="net" class="money-val">Rp0</strong></div>
       </div>
     </section>
 
@@ -144,6 +182,9 @@
       <p id="nameHint" class="muted small center">Siapa nama kamu? Nama ini dipakai untuk menyapa kamu di aplikasi dan hanya tersimpan di HP ini.</p>
       <label><span class="sr-only">Nama</span>
         <input id="nameInput" maxlength="24" autocomplete="given-name" autocapitalize="words" placeholder="Nama panggilan kamu">
+      </label>
+      <label>Tanggal gajian setiap bulan <small class="muted">untuk menghitung jatah harian</small>
+        <select id="paydayInput"></select>
       </label>
       <div class="row end">
         <button type="button" id="nameSkip" class="btn-ghost">Lewati</button>
@@ -221,7 +262,14 @@
           <input id="accMonthly" inputmode="numeric" class="money" placeholder="0">
         </label>
       </div>
-      <label class="check"><input id="accPayroll" type="checkbox"><span>Rekening payroll (tempat gaji masuk)</span></label>
+      <label>Fungsi rekening
+        <select id="accRole">
+          <option value="">Biasa</option>
+          <option value="payroll">Payroll — tempat gaji masuk</option>
+          <option value="darurat">Dana darurat — dihitung cukup berapa bulan</option>
+          <option value="harian">Belanja harian — dasar jatah harian</option>
+        </select>
+      </label>
       <div>
         <small class="muted">Warna</small>
         <div class="colors" id="accColors"></div>
@@ -261,6 +309,97 @@
         <span class="spacer"></span>
         <button type="button" class="btn-ghost" data-close>Batal</button>
         <button type="submit" class="btn-primary">Simpan</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Transaksi saham -->
+  <dialog id="tradeDialog" class="sheet">
+    <form id="tradeForm" method="dialog" class="sheet-form">
+      <div class="grabber" aria-hidden="true"></div>
+      <h2 id="tradeTitle">Transaksi saham</h2>
+      <div class="toggle three">
+        <label><input type="radio" name="ttype" value="buy" checked><span>Beli</span></label>
+        <label><input type="radio" name="ttype" value="sell"><span>Jual</span></label>
+        <label><input type="radio" name="ttype" value="div"><span>Dividen</span></label>
+      </div>
+      <div class="two">
+        <label>Kode saham
+          <input id="tCode" maxlength="6" autocapitalize="characters" autocomplete="off" spellcheck="false" list="codeList" placeholder="mis. BBCA">
+        </label>
+        <label id="tLotsWrap">Jumlah lot <small class="muted" id="tOwned"></small>
+          <input id="tLots" inputmode="numeric" class="money" placeholder="0">
+        </label>
+      </div>
+      <datalist id="codeList"></datalist>
+      <div class="two" id="tPriceRow">
+        <label>Harga / lembar
+          <input id="tPrice" inputmode="numeric" class="money" placeholder="0">
+        </label>
+        <label>Biaya broker <small class="muted" id="tFeeHint"></small>
+          <input id="tFee" inputmode="numeric" class="money" placeholder="0">
+        </label>
+      </div>
+      <label id="tDivWrap" hidden>Dividen diterima (Rp, setelah pajak)
+        <input id="tDiv" inputmode="numeric" class="money" placeholder="0">
+      </label>
+      <label><span id="tAccLabel">Bayar dari rekening</span>
+        <select id="tAccount"></select>
+      </label>
+      <div class="two">
+        <label>Tanggal
+          <input id="tDate" type="date" required>
+        </label>
+        <label>Catatan
+          <input id="tNote" maxlength="100" autocomplete="off" placeholder="opsional">
+        </label>
+      </div>
+      <div id="tSummary" class="trade-sum"></div>
+      <div class="row end">
+        <button type="button" id="tDeleteBtn" class="btn-danger" hidden>Hapus</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn-ghost" data-close>Batal</button>
+        <button type="submit" class="btn-primary">Simpan</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Detail saham -->
+  <dialog id="holdDialog" class="sheet">
+    <form id="holdForm" method="dialog" class="sheet-form">
+      <div class="grabber" aria-hidden="true"></div>
+      <div class="hold-head">
+        <span class="stock-chip big" id="hCode"></span>
+        <div><h2 id="hValue"></h2><small id="hPl" class="pl"></small></div>
+      </div>
+      <div class="hold-grid" id="hGrid"></div>
+      <label>Harga terakhir / lembar <small class="muted">lihat di aplikasi sekuritasmu</small>
+        <input id="hPrice" inputmode="numeric" class="money" placeholder="0">
+      </label>
+      <div class="invest-actions">
+        <button type="button" class="btn-ghost" data-hold="buy">📈 Beli lagi</button>
+        <button type="button" class="btn-ghost" data-hold="sell">💹 Jual</button>
+        <button type="button" class="btn-ghost" data-hold="div">🪙 Dividen</button>
+      </div>
+      <div class="row end">
+        <span class="spacer"></span>
+        <button type="button" class="btn-ghost" data-close>Tutup</button>
+        <button type="submit" class="btn-primary">Simpan harga</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Perbarui harga semua saham -->
+  <dialog id="priceDialog" class="sheet">
+    <form id="priceForm" method="dialog" class="sheet-form">
+      <div class="grabber" aria-hidden="true"></div>
+      <h2>Perbarui harga saham</h2>
+      <p class="muted small">Isi harga terakhir per lembar dari aplikasi sekuritasmu. Nilai portofolio dan untung/rugi langsung dihitung ulang.</p>
+      <div id="priceRows"></div>
+      <div class="row end">
+        <span class="spacer"></span>
+        <button type="button" class="btn-ghost" data-close>Batal</button>
+        <button type="submit" class="btn-primary">Simpan harga</button>
       </div>
     </form>
   </dialog>

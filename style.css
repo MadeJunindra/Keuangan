@@ -479,3 +479,89 @@ body.private .bar-label > span:last-child, body.private .hero-foot b, body.priva
 .welcome-art { font-size: 3rem; text-align: center; transform-origin: 70% 80%; animation: wave 1.6s ease-in-out .4s 2; }
 .welcome-art[hidden], #nameHint[hidden] { display: none; }
 @keyframes wave { 0%, 100% { transform: rotate(0); } 20%, 60% { transform: rotate(16deg); } 40%, 80% { transform: rotate(-10deg); } }
+
+/* ---------- Kekayaan: kas vs saham (v8) ---------- */
+.split-bar { display: flex; height: 6px; border-radius: 99px; overflow: hidden; background: rgba(255,255,255,.12); margin: -4px 0 14px; gap: 2px; }
+.split-bar i { display: block; height: 100%; transition: width .9s var(--ease); }
+#splitCash { background: #6ee7c8; border-radius: 99px 0 0 99px; }
+#splitStock { background: #e2c171; border-radius: 0 99px 99px 0; }
+.dot-cash, .dot-stock { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+.dot-cash { background: #6ee7c8; box-shadow: 0 0 0 3px rgba(110,231,200,.2); }
+.dot-stock { background: #e2c171; box-shadow: 0 0 0 3px rgba(226,193,113,.2); }
+.hero-foot em { font-style: normal; font-weight: 700; font-size: .78rem; }
+.hero-foot em[data-sign="up"] { color: #6ee7a8; }
+.hero-foot em[data-sign="down"] { color: #fda4a4; }
+.pl[data-sign="up"] { color: var(--in); }
+.pl[data-sign="down"] { color: var(--danger); }
+
+/* ---------- Jatah aman hari ini ---------- */
+.safe {
+  margin: 14px 0 6px; padding: 16px 18px; border-radius: var(--radius);
+  background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-sm);
+}
+.safe[hidden] { display: none; }
+.safe-top { display: flex; align-items: center; gap: 12px; }
+.safe-ico { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; font-size: 1.3rem; flex: none;
+  background: color-mix(in srgb, var(--in) 14%, transparent); }
+.safe-main { flex: 1; min-width: 0; }
+.safe-main small { color: var(--muted); font-size: .8rem; display: block; }
+.safe-main strong { font-size: 1.45rem; font-weight: 800; letter-spacing: -.02em; color: var(--in); }
+.safe-main strong.over { color: var(--danger); }
+.safe-days { font-size: .72rem; font-weight: 700; color: var(--muted); background: var(--surface-2); padding: 5px 9px; border-radius: 99px; white-space: nowrap; }
+.safe .bar { margin: 12px 0 8px; }
+.safe .bar > i { background: var(--in); }
+.safe .bar > i.over { background: var(--danger); }
+.safe-info { margin: 0; font-size: .8rem; color: var(--muted); line-height: 1.45; }
+.safe-info b { color: var(--text); }
+.badge.soft { background: var(--surface-2); color: var(--muted); }
+
+/* ---------- Portofolio saham ---------- */
+.invest { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow-sm); }
+.invest-sum { display: flex; justify-content: space-between; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.invest-sum small { color: var(--muted); font-size: .8rem; display: block; margin-bottom: 2px; }
+.invest-sum strong { font-size: 1.35rem; font-weight: 800; letter-spacing: -.02em; }
+.invest-pl { text-align: right; }
+.invest-pl strong { font-size: 1rem; }
+.invest-meta { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: .78rem; color: var(--muted); margin: 10px 0 6px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.invest-meta b { color: var(--text); font-weight: 700; }
+.invest-meta b.pl[data-sign] { color: inherit; }
+.invest-meta b.pl[data-sign="up"] { color: var(--in); }
+.invest-meta b.pl[data-sign="down"] { color: var(--danger); }
+.hold {
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; border: 0; background: none;
+  padding: 10px 8px; margin: 0 -8px; width: calc(100% + 16px); border-radius: 14px; transition: background .2s;
+}
+.hold:hover, .hold:active { background: var(--surface-2); }
+.stock-chip {
+  min-width: 52px; height: 30px; padding: 0 8px; border-radius: 9px; display: inline-grid; place-items: center; flex: none;
+  background: color-mix(in srgb, var(--gold) 18%, transparent); color: color-mix(in srgb, var(--gold) 65%, var(--text));
+  font-weight: 800; font-size: .78rem; letter-spacing: .04em;
+}
+.stock-chip.big { min-width: 70px; height: 44px; font-size: 1rem; border-radius: 13px; }
+.hold-info { flex: 1; min-width: 0; }
+.hold-info b { display: block; font-size: .92rem; }
+.hold-info small, .hold-val small { display: block; font-size: .75rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hold-val { text-align: right; }
+.hold-val b { font-size: .92rem; font-weight: 800; white-space: nowrap; }
+.hold-val small.pl { font-weight: 700; }
+.hold-empty { margin: 12px 0 4px; line-height: 1.5; }
+.invest-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+.invest-actions .btn-ghost { padding: 10px 6px; font-size: .88rem; }
+.trade-sum { font-size: .88rem; color: var(--muted); line-height: 1.6; background: var(--surface-2); border-radius: 14px; padding: 10px 14px; }
+.trade-sum:empty { display: none; }
+.trade-sum b { color: var(--text); }
+.sheet-form label small.muted { font-weight: 500; }
+.hold-head { display: flex; align-items: center; gap: 14px; }
+.hold-head h2 { font-size: 1.4rem; }
+.hold-head small { font-weight: 700; font-size: .85rem; }
+.hold-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.hold-grid div { background: var(--surface-2); border-radius: 12px; padding: 10px 12px; min-width: 0; }
+.hold-grid small { display: block; color: var(--muted); font-size: .72rem; }
+.hold-grid b { font-size: .92rem; overflow-wrap: anywhere; }
+#priceRows { display: grid; gap: 8px; }
+#priceRows .split-row > span { flex-direction: column; align-items: flex-start; gap: 4px; }
+
+body.private .safe-main strong, body.private .invest-sum strong, body.private .invest-meta b, body.private .hold-val b,
+body.private .hold-val small, body.private .hero-foot em, body.private .hold-grid b, body.private #hValue { filter: blur(9px); }
+.safe-main small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.safe-days { font-size: .68rem; padding: 4px 8px; align-self: flex-start; }
