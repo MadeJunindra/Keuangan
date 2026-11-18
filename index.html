@@ -341,6 +341,17 @@
         </label>
       </div>
       <datalist id="codeList"></datalist>
+      <div class="two" id="tQuoteRow" hidden>
+        <label>Dibeli pakai
+          <select id="tQuote">
+            <option value="IDR">Rupiah (IDR)</option>
+            <option value="USDT">USDT</option>
+          </select>
+        </label>
+        <label id="tRateWrap" hidden>Kurs 1 USDT (Rp)
+          <input id="tRate" inputmode="numeric" class="money" placeholder="mis. 16.500">
+        </label>
+      </div>
       <div class="two" id="tPriceRow">
         <label><span id="tPriceLabel">Harga / lembar</span>
           <input id="tPrice" inputmode="numeric" class="money" placeholder="0">
@@ -385,6 +396,11 @@
       <label><span id="hPriceLabel">Harga terakhir / lembar</span>
         <input id="hPrice" inputmode="numeric" class="money" placeholder="0">
       </label>
+      <p id="hPreview" class="price-preview"></p>
+      <div>
+        <small class="hold-label">Riwayat · ketuk untuk mengubah</small>
+        <div id="hTxs" class="hold-txs"></div>
+      </div>
       <div class="invest-actions">
         <button type="button" class="btn-ghost" data-hold="buy">📈 Beli lagi</button>
         <button type="button" class="btn-ghost" data-hold="sell">💹 Jual</button>

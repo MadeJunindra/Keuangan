@@ -126,6 +126,10 @@ const LOT = 100; // 1 lot = 100 lembar (BEI)
 // Portofolio dengan metode harga rata-rata. exclude = id transaksi yang sedang diubah.
 // Kunci harga: saham pakai kode langsung (kompatibel versi lama), kripto diberi awalan
 const priceKey = (kind, code) => (kind === 'kripto' ? `kripto:${code}` : code);
+// Kurs USDT → Rupiah (diisi saat transaksi USDT, di "Update harga", atau diambil dari Indodax)
+const FX_KEY = 'fx:USDT';
+const fxRate = () => stocks[FX_KEY]?.price || 0;
+const toIdr = (price, quote) => (quote === 'USDT' ? price * fxRate() : price);
 // Jumlah unit transaksi: saham = lot × 100 lembar, kripto = jumlah koin
 const txUnits = (t) => (t.kind === 'kripto' ? t.qty : t.lots * LOT);
 function fmtDec(n, max = 8) { return Number(n).toLocaleString('id-ID', { maximumFractionDigits: max }); }
@@ -133,26 +137,35 @@ function fmtPrice(p) { return p >= 1000 ? Math.round(p).toLocaleString('id-ID') 
 // Portofolio dengan metode harga rata-rata. exclude = id transaksi yang sedang diubah.
 function portfolio(exclude) {
   const h = {};
-  const get = (kind, code) => (h[`${kind}:${code}`] ||= { kind, code, units: 0, cost: 0, realized: 0, div: 0 });
+  const get = (kind, code) => (h[`${kind}:${code}`] ||= { kind, code, units: 0, cost: 0, costQ: 0, realized: 0, div: 0 });
   txs.filter((t) => STOCK_TYPES.includes(t.type) && t.id !== exclude)
     .sort((a, b) => a.date.localeCompare(b.date) || a.created - b.created)
     .forEach((t) => {
       const s = get(t.kind || 'saham', t.code);
-      if (t.type === 'buy') { s.units += txUnits(t); s.cost += t.amount; }
-      else if (t.type === 'sell') {
+      if (t.type === 'buy') {
+        s.units += txUnits(t); s.cost += t.amount;
+        // Modal dalam USDT dicatat terpisah supaya harga rata-rata USDT tetap akurat
+        if (t.quote === 'USDT') { s.hasUsdt = true; s.costQ += txUnits(t) * t.price + (t.fee || 0) / (t.rate || 1); }
+        else s.hasIdr = true;
+      } else if (t.type === 'sell') {
         const u = txUnits(t);
         if (u > s.units + 1e-9) s.oversold = true;
         const sold = Math.min(u, s.units);
         const basis = s.units ? (s.cost / s.units) * sold : 0;
+        s.costQ -= s.units ? (s.costQ / s.units) * sold : 0;
         s.cost -= basis; s.units -= sold; s.realized += t.amount - basis;
-        if (s.units <= 1e-12) { s.units = 0; s.cost = 0; }
+        if (s.units <= 1e-12) { s.units = 0; s.cost = 0; s.costQ = 0; }
       } else s.div += t.amount;
     });
   return Object.values(h).map((s) => {
     s.lots = s.kind === 'saham' ? s.units / LOT : 0;
     s.avg = s.units ? s.cost / s.units : 0;
-    s.price = stocks[priceKey(s.kind, s.code)]?.price || s.avg;
-    s.value = Math.round(s.units * s.price);
+    const stored = stocks[priceKey(s.kind, s.code)];
+    s.quote = stored?.quote || (s.hasUsdt && !s.hasIdr ? 'USDT' : 'IDR');
+    // Harga rata-rata ditampilkan dalam mata uang harga aset ini
+    s.avgShow = s.quote === 'USDT' ? (s.hasUsdt && !s.hasIdr && s.units ? s.costQ / s.units : (fxRate() ? s.avg / fxRate() : 0)) : s.avg;
+    s.price = stored?.price || s.avgShow;
+    s.value = s.quote === 'USDT' && !stored?.price ? Math.round(s.cost) : Math.round(s.units * toIdr(s.price, s.quote));
     s.pl = s.value - s.cost;
     s.plPct = s.cost ? (s.pl / s.cost) * 100 : 0;
     return s;
@@ -280,7 +293,7 @@ function renderSummary() {
   const group = (kind) => ofKind(kind).map((s) => `
     <button class="hold" data-key="${s.kind}:${esc(s.code)}">
       <span class="stock-chip" data-kind="${s.kind}">${esc(s.code)}</span>
-      <span class="hold-info"><b>${s.kind === 'kripto' ? `${fmtDec(s.units)} ${esc(s.code)}` : `${fmtDec(s.lots)} lot`}</b><small>${fmtPrice(s.avg)} → ${fmtPrice(s.price)}</small></span>
+      <span class="hold-info"><b>${s.kind === 'kripto' ? `${fmtDec(s.units)} ${esc(s.code)}` : `${fmtDec(s.lots)} lot`}</b><small>${fmtPrice(s.avgShow)} → ${fmtPrice(s.price)}${s.quote === 'USDT' ? ' USDT' : ''}</small></span>
       <span class="hold-val"><b class="money-val">${fmt(s.value)}</b><small class="pl" data-sign="${s.pl >= 0 ? 'up' : 'down'}">${plTxt(s.pl, s.plPct)}</small></span>
     </button>`).join('');
   const groups = ['saham', 'kripto'].filter((k) => ofKind(k).length)
@@ -425,7 +438,7 @@ function txRow(t) {
   if (STOCK_TYPES.includes(t.type)) {
     const kr = t.kind === 'kripto';
     icon = kr ? '🪙' : { buy: '📈', sell: '💹', div: '💸' }[t.type];
-    const qtyTxt = kr ? `${fmtDec(t.qty)} ${esc(t.code)} @ ${fmtPrice(t.price)}` : `${fmtDec(t.lots)} lot @ ${fmtPrice(t.price)}`;
+    const qtyTxt = kr ? `${fmtDec(t.qty)} ${esc(t.code)} @ ${fmtPrice(t.price)}${t.quote === 'USDT' ? ' USDT' : ''}` : `${fmtDec(t.lots)} lot @ ${fmtPrice(t.price)}`;
     title = t.account === EXISTING ? `${kr ? 'Kripto' : 'Saham'} lama ${esc(t.code)}` : `${{ buy: 'Beli', sell: 'Jual', div: 'Dividen' }[t.type]} ${esc(t.code)}`;
     sub = t.account === EXISTING ? `${qtyTxt} · tidak memotong saldo` : t.type === 'div' ? `ke ${tag(acc)}` : `${qtyTxt} · ${t.type === 'buy' ? 'dari' : 'ke'} ${tag(acc)}`;
     sign = t.account === EXISTING ? '' : t.type === 'buy' ? '−' : '+';
@@ -764,6 +777,10 @@ function parseDec(s) {
 const decInput = (n) => (n ? Number(n).toLocaleString('id-ID', { maximumFractionDigits: 10, useGrouping: false }) : '');
 const qtyOf = () => (tKind() === 'kripto' ? parseDec($('#tLots').value) : num($('#tLots').value));
 const priceOf = () => (tKind() === 'kripto' ? parseDec($('#tPrice').value) : num($('#tPrice').value));
+const quoteOf = () => (tKind() === 'kripto' && tType() !== 'div' ? $('#tQuote').value : 'IDR');
+const rateOf = () => (quoteOf() === 'USDT' ? num($('#tRate').value) : 1);
+// Nilai transaksi dalam Rupiah
+const grossOf = () => Math.round(unitsOf(tKind(), qtyOf()) * priceOf() * rateOf());
 const unitsOf = (kind, q) => (kind === 'kripto' ? q : q * LOT);
 function ownedQty(kind, code) {
   const s = portfolio(editingTradeId).find((x) => x.kind === kind && x.code === code);
@@ -782,7 +799,9 @@ function applyTradeType() {
   $('#tAccLabel').textContent = type === 'buy' ? 'Sumber dana' : 'Uang masuk ke rekening';
   $('#tCode').placeholder = KIND[kind].ph;
   $('#tLotsLabel').textContent = kind === 'kripto' ? 'Jumlah koin' : 'Jumlah lot';
-  $('#tPriceLabel').textContent = `${isExisting ? 'Harga rata-rata' : 'Harga'} / ${kind === 'kripto' ? 'koin (Rp)' : 'lembar'}`;
+  $('#tQuoteRow').hidden = kind !== 'kripto' || isDiv;
+  $('#tRateWrap').hidden = quoteOf() !== 'USDT';
+  $('#tPriceLabel').textContent = `${isExisting ? 'Harga rata-rata' : 'Harga'} / ${kind === 'kripto' ? `koin (${quoteOf() === 'USDT' ? 'USDT' : 'Rp'})` : 'lembar'}`;
   $('#tFeeLabel').textContent = kind === 'kripto' ? 'Biaya trading' : 'Biaya broker';
   // Kripto boleh desimal, jadi tanpa format ribuan otomatis
   ['#tLots', '#tPrice'].forEach((sel) => {
@@ -796,8 +815,7 @@ function applyTradeType() {
 function autoFee() {
   const type = tType(); if (type === 'div') return;
   if ($('#tAccount').value === EXISTING) { $('#tFee').value = ''; return; }
-  const gross = unitsOf(tKind(), qtyOf()) * priceOf();
-  $('#tFee').value = money(Math.round(gross * FEE[tKind()][type]));
+  $('#tFee').value = money(Math.round(grossOf() * FEE[tKind()][type]));
 }
 function updateTradeSummary() {
   const type = tType(), kind = tKind(), code = $('#tCode').value.trim().toUpperCase();
@@ -806,8 +824,12 @@ function updateTradeSummary() {
   if (type === 'div') { $('#tSummary').innerHTML = num($('#tDiv').value) ? `Dividen <b>${fmt(num($('#tDiv').value))}</b> masuk ke saldo kas` : ''; return; }
   const q = qtyOf(), price = priceOf(), fee = num($('#tFee').value);
   if (!q || !price) { $('#tSummary').innerHTML = ''; return; }
-  const gross = Math.round(unitsOf(kind, q) * price);
-  const calc = kind === 'kripto' ? `${fmtDec(q)} ${esc(code || 'koin')} × ${fmtPrice(price)}` : `${fmtDec(q)} lot × 100 × ${fmtPrice(price)}`;
+  const usdt = quoteOf() === 'USDT', rate = rateOf();
+  if (usdt && !rate) { $('#tSummary').innerHTML = 'Isi <b>kurs 1 USDT</b> dalam Rupiah supaya nilainya bisa dihitung.'; return; }
+  const gross = grossOf();
+  const calc = kind === 'kripto'
+    ? `${fmtDec(q)} ${esc(code || 'koin')} × ${fmtPrice(price)}${usdt ? ` USDT × Rp${rate.toLocaleString('id-ID')}` : ''}`
+    : `${fmtDec(q)} lot × 100 × ${fmtPrice(price)}`;
   if (type === 'buy' && $('#tAccount').value === EXISTING) {
     $('#tSummary').innerHTML = `Modal ${calc} = <b>${fmt(gross + fee)}</b><br>📥 Dicatat sebagai aset yang sudah kamu punya. <b>Saldo bank tidak berubah.</b>`;
   } else if (type === 'buy') {
@@ -838,7 +860,10 @@ function openTrade(type = 'buy', tx = null, code = '', existing = false, kind = 
   $('#tCode').value = tx?.code || code;
   const fmtIn = kind === 'kripto' ? decInput : money;
   $('#tLots').value = fmtIn(tx ? (kind === 'kripto' ? tx.qty : tx.lots) : '');
-  $('#tPrice').value = fmtIn(tx?.price || (code && stocks[priceKey(kind, code)]?.price) || '');
+  const stored = code ? stocks[priceKey(kind, code)] : null;
+  $('#tQuote').value = tx?.quote || stored?.quote || 'IDR';
+  $('#tRate').value = money(tx?.rate || fxRate());
+  $('#tPrice').value = fmtIn(tx?.price || stored?.price || '');
   $('#tFee').value = money(tx?.fee);
   $('#tDiv').value = money(tx?.type === 'div' ? tx.amount : '');
   // Rekening default: terakhir dipakai untuk investasi, kalau belum ada pakai rekening payroll
@@ -853,7 +878,7 @@ function openTrade(type = 'buy', tx = null, code = '', existing = false, kind = 
 }
 document.querySelectorAll('input[name="ttype"]').forEach((r) => r.addEventListener('change', applyTradeType));
 document.querySelectorAll('input[name="tkind"]').forEach((r) => r.addEventListener('change', () => {
-  $('#tLots').value = ''; $('#tPrice').value = ''; feeTouched = false;
+  $('#tLots').value = ''; $('#tPrice').value = ''; $('#tQuote').value = 'IDR'; feeTouched = false;
   $('#codeList').innerHTML = portfolio().filter((s) => s.kind === tKind()).map((s) => `<option value="${esc(s.code)}">`).join('');
   applyTradeType();
 }));
@@ -866,14 +891,18 @@ $('#holdings').addEventListener('click', (e) => {
   const b = e.target.closest('[data-existing]'); if (b) openTrade('buy', null, '', true, b.dataset.existing || 'saham');
 });
 $('#existingBtn').addEventListener('click', () => openTrade('buy', null, '', true));
-['#tLots', '#tPrice'].forEach((sel) => $(sel).addEventListener('input', () => { if (!feeTouched) autoFee(); updateTradeSummary(); }));
+['#tLots', '#tPrice', '#tRate'].forEach((sel) => $(sel).addEventListener('input', () => { if (!feeTouched) autoFee(); updateTradeSummary(); }));
+$('#tQuote').addEventListener('change', () => { $('#tPrice').value = ''; applyTradeType(); });
 $('#tFee').addEventListener('input', () => { feeTouched = true; updateTradeSummary(); });
 $('#tDiv').addEventListener('input', updateTradeSummary);
 $('#tCode').addEventListener('input', () => {
   const v = $('#tCode').value.toUpperCase().replace(/[^A-Z0-9]/g, '');
   if (v !== $('#tCode').value) $('#tCode').value = v;
-  const p = stocks[priceKey(tKind(), v)]?.price;
-  if (!$('#tPrice').value && p) $('#tPrice').value = tKind() === 'kripto' ? decInput(p) : money(p);
+  const st = stocks[priceKey(tKind(), v)];
+  if (!$('#tPrice').value && st?.price) {
+    if (tKind() === 'kripto') { $('#tQuote').value = st.quote || 'IDR'; applyTradeType(); }
+    $('#tPrice').value = tKind() === 'kripto' ? decInput(st.price) : money(st.price);
+  }
   updateTradeSummary();
 });
 document.querySelectorAll('[data-trade]').forEach((b) => b.addEventListener('click', () => openTrade(b.dataset.trade)));
@@ -890,7 +919,9 @@ $('#tradeForm').addEventListener('submit', (e) => {
     if (!q) return fail(kind === 'kripto' ? 'Isi jumlah koin' : 'Isi jumlah lot', '#tLots');
     if (!data.price) return fail('Isi harga', '#tPrice');
     if (kind === 'kripto') { data.qty = q; data.lots = 0; } else { data.lots = q; data.qty = 0; }
-    const gross = Math.round(unitsOf(kind, q) * data.price);
+    data.quote = quoteOf(); data.rate = rateOf();
+    if (data.quote === 'USDT' && !data.rate) return fail('Isi kurs 1 USDT dalam Rupiah', '#tRate');
+    const gross = grossOf();
     if (type === 'sell') {
       const owned = ownedQty(kind, code);
       if (q > owned + 1e-12) return fail(owned ? `Kamu hanya punya ${fmtDec(owned)} ${kind === 'kripto' ? code : `lot ${code}`}` : `Belum ada ${code} untuk dijual`, '#tLots');
@@ -898,7 +929,8 @@ $('#tradeForm').addEventListener('submit', (e) => {
     } else data.amount = gross + data.fee;
     // Harga transaksi terbaru dipakai sebagai harga terakhir
     const k = priceKey(kind, code);
-    if (!stocks[k] || (stocks[k].date || '') <= data.date) stocks[k] = { price: data.price, date: data.date };
+    if (!stocks[k] || (stocks[k].date || '') <= data.date) stocks[k] = { price: data.price, date: data.date, quote: data.quote };
+    if (data.quote === 'USDT' && (!stocks[FX_KEY] || (stocks[FX_KEY].date || '') <= data.date)) stocks[FX_KEY] = { price: data.rate, date: data.date };
   }
   let id = editingTradeId;
   if (id) Object.assign(txs.find((t) => t.id === id), data);
@@ -936,19 +968,52 @@ $('#holdings').addEventListener('click', (e) => {
   $('#hPl').dataset.sign = s.pl >= 0 ? 'up' : 'down';
   const cell = (k, v) => `<div><small>${k}</small><b>${v}</b></div>`;
   $('#hGrid').innerHTML = cell('Jumlah', kr ? `${fmtDec(s.units)} ${esc(s.code)}` : `${fmtDec(s.lots)} lot (${fmtDec(s.units)} lbr)`) +
-    cell('Harga rata-rata', fmtPrice(s.avg)) + cell('Modal', fmt(Math.round(s.cost))) +
-    (kr ? cell('Jenis', 'Kripto') : cell('Dividen diterima', fmt(s.div))) + (s.realized ? cell('Untung/rugi terealisasi', fmt(Math.round(s.realized))) : '');
-  $('#hPriceLabel').textContent = kr ? 'Harga terakhir / koin (Rp)' : 'Harga terakhir / lembar';
+    cell('Harga rata-rata', `${fmtPrice(s.avgShow)}${s.quote === 'USDT' ? ' USDT' : ''}`) + cell('Modal', fmt(Math.round(s.cost))) +
+    (kr ? (s.quote === 'USDT' ? cell('Kurs USDT', fmt(fxRate())) : cell('Jenis', 'Kripto')) : cell('Dividen diterima', fmt(s.div))) +
+    (s.realized ? cell('Untung/rugi terealisasi', fmt(Math.round(s.realized))) : '');
+  $('#hPriceLabel').textContent = kr ? `Harga terakhir / koin (${s.quote === 'USDT' ? 'USDT' : 'Rp'})` : 'Harga terakhir / lembar';
   $('#hPrice').classList.toggle('money', !kr);
   $('#hPrice').inputMode = kr ? 'decimal' : 'numeric';
   $('#hPrice').value = kr ? decInput(s.price) : money(s.price);
+  holdPreview();
   $('#hDivBtn').hidden = kr;
+  // Semua transaksi aset ini (dari tanggal berapa pun), bisa diketuk untuk diubah
+  const mine = txs.filter((t) => STOCK_TYPES.includes(t.type) && (t.kind || 'saham') === s.kind && t.code === s.code)
+    .sort((a, b) => b.date.localeCompare(a.date) || b.created - a.created);
+  $('#hTxs').innerHTML = mine.map((t) => `<button type="button" class="hold-tx" data-tx="${t.id}">
+      <span><b>${t.account === EXISTING ? 'Aset lama' : { buy: 'Beli', sell: 'Jual', div: 'Dividen' }[t.type]}</b>
+      <small>${new Date(t.date + 'T00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}${t.type !== 'div' ? ` · ${kr ? fmtDec(t.qty) : `${fmtDec(t.lots)} lot`} @ ${fmtPrice(t.price)}${t.quote === 'USDT' ? ' USDT' : ''}` : ''}</small></span>
+      <b class="money-val">${fmt(t.amount)}</b></button>`).join('');
   $('#holdDialog').showModal();
 });
-$('#holdForm').addEventListener('submit', () => {
+// Harga baru yang jauh dari harga rata-rata (≤ 1/5 atau ≥ 5×) kemungkinan salah ketik / salah mata uang
+const suspicious = (p, avg) => avg > 0 && p > 0 && (p / avg < 0.2 || p / avg > 5);
+const warnText = (s) => s.quote === 'USDT'
+  ? `⚠️ Jauh dari harga rata-rata ${fmtPrice(s.avgShow)} USDT. Pastikan harga dalam <b>USDT per 1 koin</b>. Koma dibaca sebagai desimal.`
+  : `⚠️ Jauh dari harga rata-rata ${fmtPrice(s.avg)}. Pastikan harga dalam <b>Rupiah per 1 ${s.kind === 'kripto' ? 'koin' : 'lembar'}</b>${s.kind === 'kripto' ? ' (bukan USD/USDT)' : ''}. Koma dibaca sebagai desimal.`;
+function holdPreview() {
+  const s = findHold(holdKey); if (!s) return;
+  const p = s.kind === 'kripto' ? parseDec($('#hPrice').value) : num($('#hPrice').value);
+  if (!p) { $('#hPreview').innerHTML = ''; return; }
+  const v = Math.round(s.units * toIdr(p, s.quote)), pl = v - s.cost;
+  $('#hPreview').innerHTML = `Nilai jadi <b>${fmt(v)}</b> · <span class="pl" data-sign="${pl >= 0 ? 'up' : 'down'}">${pl >= 0 ? 'untung' : 'rugi'} ${fmt(Math.abs(Math.round(pl)))}</span>` +
+    (s.quote === 'USDT' ? ` <small>(kurs Rp${fxRate().toLocaleString('id-ID')})</small>` : '') +
+    (suspicious(p, s.avgShow) ? `<span class="warn">${warnText(s)}</span>` : '');
+}
+$('#hPrice').addEventListener('input', holdPreview);
+$('#holdForm').addEventListener('submit', (e) => {
   const s = findHold(holdKey);
   const p = s.kind === 'kripto' ? parseDec($('#hPrice').value) : num($('#hPrice').value);
-  if (p) { stocks[priceKey(s.kind, s.code)] = { price: p, date: todayISO() }; save(); render(); toast(`Harga ${s.code} diperbarui`); }
+  if (!p) return;
+  if (suspicious(p, s.avgShow) && !confirm(`Harga ${s.code} ${fmtPrice(p)} jauh berbeda dari harga rata-rata ${fmtPrice(s.avgShow)}${s.quote === 'USDT' ? ' USDT' : ''}.\n\nPastikan mata uangnya benar. Tetap simpan?`)) {
+    e.preventDefault(); $('#hPrice').focus(); return;
+  }
+  stocks[priceKey(s.kind, s.code)] = { price: p, date: todayISO(), quote: s.quote }; save(); render(); toast(`Harga ${s.code} diperbarui`);
+});
+$('#hTxs').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-tx]'); if (!b) return;
+  const t = txs.find((x) => x.id === b.dataset.tx);
+  $('#holdDialog').close(); openTrade(t.type, t);
 });
 document.querySelectorAll('[data-hold]').forEach((b) => b.addEventListener('click', () => {
   const s = findHold(holdKey);
@@ -960,17 +1025,33 @@ $('#priceBtn').addEventListener('click', () => {
   const open = portfolio().filter((s) => s.units > 0);
   if (!open.length) { toast('Belum ada aset untuk diperbarui'); return; }
   $('#priceRows').innerHTML = open.map((s) => `<label class="split-row"><span><span class="stock-chip" data-kind="${s.kind}">${esc(s.code)}</span>
-    <small>${s.kind === 'kripto' ? `${fmtDec(s.units)} koin` : `${fmtDec(s.lots)} lot`} · rata-rata ${fmtPrice(s.avg)}</small></span>
+    <small>${s.kind === 'kripto' ? `${fmtDec(s.units)} koin` : `${fmtDec(s.lots)} lot`} · rata-rata ${fmtPrice(s.avgShow)}${s.quote === 'USDT' ? ' USDT' : ''}</small></span>
     <input ${s.kind === 'kripto' ? 'inputmode="decimal"' : 'class="money" inputmode="numeric"'} data-key="${s.kind}:${esc(s.code)}"
-      value="${s.kind === 'kripto' ? decInput(s.price) : money(s.price)}"></label>`).join('');
+      value="${s.kind === 'kripto' ? decInput(s.price) : money(s.price)}"><small class="row-warn"></small></label>`).join('') +
+    (open.some((s) => s.quote === 'USDT') ? `<label class="split-row fx-row"><span>💱 Kurs 1 USDT<small>dipakai untuk aset yang harganya dalam USDT</small></span>
+      <input class="money" inputmode="numeric" data-key="${FX_KEY}" value="${money(fxRate())}"></label>` : '');
   $('#indodaxBtn').hidden = !open.some((s) => s.kind === 'kripto');
   $('#priceDialog').showModal();
 });
-$('#priceForm').addEventListener('submit', () => {
+$('#priceRows').addEventListener('input', (e) => {
+  const i = e.target; if (!i.dataset.key || i.dataset.key === FX_KEY) return;
+  const s = findHold(i.dataset.key), p = s.kind === 'kripto' ? parseDec(i.value) : num(i.value);
+  i.classList.toggle('warn', suspicious(p, s.avgShow));
+  i.closest('.split-row').querySelector('.row-warn').innerHTML = suspicious(p, s.avgShow) ? warnText(s) : '';
+});
+$('#priceForm').addEventListener('submit', (e) => {
+  const odd = [...document.querySelectorAll('#priceRows input')].filter((i) => {
+    if (i.dataset.key === FX_KEY) return false;
+    const s = findHold(i.dataset.key); return suspicious(i.dataset.key.startsWith('kripto:') ? parseDec(i.value) : num(i.value), s.avgShow);
+  }).map((i) => i.dataset.key.split(':')[1]);
+  if (odd.length && !confirm(`Harga ${odd.join(', ')} jauh berbeda dari harga rata-ratanya.\n\nPastikan dalam Rupiah per 1 koin/lembar (bukan dolar AS). Tetap simpan?`)) { e.preventDefault(); return; }
+  const fx = document.querySelector(`#priceRows input[data-key="${FX_KEY}"]`);
+  if (fx && num(fx.value)) stocks[FX_KEY] = { price: num(fx.value), date: todayISO() };
   document.querySelectorAll('#priceRows input').forEach((i) => {
+    if (i.dataset.key === FX_KEY) return;
     const [kind, code] = i.dataset.key.split(':');
     const p = kind === 'kripto' ? parseDec(i.value) : num(i.value);
-    if (p) stocks[priceKey(kind, code)] = { price: p, date: todayISO() };
+    if (p) stocks[priceKey(kind, code)] = { price: p, date: todayISO(), quote: findHold(i.dataset.key)?.quote || 'IDR' };
   });
   save(); render(); toast('Harga diperbarui');
 });
@@ -980,16 +1061,27 @@ $('#indodaxBtn').addEventListener('click', async () => {
   const inputs = [...document.querySelectorAll('#priceRows input')].filter((i) => i.dataset.key.startsWith('kripto:'));
   if (!navigator.onLine) { toast('Tidak ada internet'); return; }
   $('#indodaxBtn').disabled = true; $('#indodaxBtn').textContent = 'Mengambil harga…';
-  let ok = 0;
-  await Promise.all(inputs.map(async (i) => {
-    const code = i.dataset.key.split(':')[1].toLowerCase();
+  const last = async (pair) => {
     try {
       const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 8000);
-      const r = await fetch(`https://indodax.com/api/ticker/${code}idr`, { signal: ctrl.signal, cache: 'no-store' });
+      const r = await fetch(`https://indodax.com/api/ticker/${pair}`, { signal: ctrl.signal, cache: 'no-store' });
       clearTimeout(t);
-      const last = Number((await r.json())?.ticker?.last);
-      if (last > 0) { i.value = decInput(last); i.classList.add('fetched'); ok++; }
-    } catch {}
+      const v = Number((await r.json())?.ticker?.last);
+      return v > 0 ? v : 0;
+    } catch { return 0; }
+  };
+  // Kurs USDT dulu, dipakai untuk aset yang harganya dalam USDT
+  const fxInput = document.querySelector(`#priceRows input[data-key="${FX_KEY}"]`);
+  const usdt = fxInput ? await last('usdtidr') : 0;
+  if (fxInput && usdt) { fxInput.value = money(Math.round(usdt)); fxInput.classList.add('fetched'); }
+  let ok = 0;
+  await Promise.all(inputs.map(async (i) => {
+    const s = findHold(i.dataset.key);
+    const idr = await last(`${s.code.toLowerCase()}idr`);
+    if (!idr) return;
+    if (s.quote === 'USDT') { if (!usdt) return; i.value = decInput(Math.round((idr / usdt) * 100) / 100); }
+    else i.value = decInput(idr);
+    i.classList.add('fetched'); ok++;
   }));
   $('#indodaxBtn').disabled = false; $('#indodaxBtn').textContent = '⚡ Ambil harga kripto dari Indodax';
   toast(ok ? `${ok} harga kripto diambil dari Indodax — ketuk Simpan` : 'Gagal mengambil harga dari Indodax. Isi manual saja.');
@@ -1054,7 +1146,7 @@ $('#exportCsvBtn').addEventListener('click', () => {
   const lines = [['Tanggal', 'Jenis', 'Rekening', 'Ke Rekening', 'Kategori', 'Jumlah', 'Catatan'].join(',')];
   [...txs].sort((a, b) => a.date.localeCompare(b.date)).forEach((t) => lines.push([
     t.date, JENIS[t.type], q(accById(t.account)?.name), q(t.to ? accById(t.to)?.name : ''),
-    q(t.code ? `${t.kind === 'kripto' ? 'Kripto' : 'Saham'} ${t.code}${t.type !== 'div' ? ` ${t.kind === 'kripto' ? `${t.qty} koin` : `${t.lots} lot`} @ ${t.price}` : ''}` : t.category ? CAT_MAP[t.category]?.name || t.category : ''), t.amount, q(t.note),
+    q(t.code ? `${t.kind === 'kripto' ? 'Kripto' : 'Saham'} ${t.code}${t.type !== 'div' ? ` ${t.kind === 'kripto' ? `${t.qty} koin` : `${t.lots} lot`} @ ${t.price}${t.quote === 'USDT' ? ` USDT (kurs ${t.rate})` : ''}` : ''}` : t.category ? CAT_MAP[t.category]?.name || t.category : ''), t.amount, q(t.note),
   ].join(',')));
   download(`keuangan-${todayISO()}.csv`, '﻿' + lines.join('\n'), 'text/csv');
 });
@@ -1090,7 +1182,7 @@ $('#importFile').addEventListener('change', async (e) => {
 });
 
 // ---------- PWA ----------
-const APP_VERSION = '10 · 18 Nov 2026';
+const APP_VERSION = '12 · 18 Nov 2026';
 $('#appVersion').textContent = APP_VERSION;
 let swReg = null;
 if ('serviceWorker' in navigator) {

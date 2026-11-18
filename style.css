@@ -590,3 +590,25 @@ body.private .hold-val small, body.private .hero-foot em, body.private .hold-gri
 #indodaxBtn[hidden] { display: none; }
 #priceRows input.fetched { border-color: var(--in); }
 body.private .invest-split span { filter: blur(8px); }
+
+/* ---------- Peringatan harga (v11) ---------- */
+.price-preview { margin: -4px 0 0; font-size: .84rem; color: var(--muted); line-height: 1.5; }
+.price-preview:empty { display: none; }
+.price-preview b { color: var(--text); }
+.price-preview .warn, .row-warn { display: block; color: var(--danger); font-size: .8rem; margin-top: 4px; line-height: 1.45; }
+.price-preview .warn b, .row-warn b { color: var(--danger); }
+.row-warn:empty { display: none; }
+#priceRows .split-row { grid-template-columns: 1fr 140px; }
+#priceRows .row-warn { grid-column: 1 / -1; margin: 0; }
+#priceRows input.warn { border-color: var(--danger); }
+#tQuoteRow[hidden], #tRateWrap[hidden] { display: none; }
+.fx-row { background: color-mix(in srgb, var(--gold) 10%, var(--surface-2)) !important; }
+.fx-row > span { flex-direction: column; align-items: flex-start !important; gap: 2px !important; }
+.hold-txs { display: grid; gap: 6px; margin-top: 6px; max-height: 210px; overflow-y: auto; }
+.hold-tx { display: flex; justify-content: space-between; align-items: center; gap: 10px; text-align: left; width: 100%;
+  padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface-2); }
+.hold-tx span { min-width: 0; }
+.hold-tx span b { display: block; font-size: .88rem; }
+.hold-tx small { display: block; color: var(--muted); font-size: .74rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hold-tx > b { font-size: .88rem; white-space: nowrap; }
+body.private .hold-tx > b { filter: blur(8px); }
