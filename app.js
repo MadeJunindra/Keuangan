@@ -124,26 +124,35 @@ const STOCK_TYPES = ['buy', 'sell', 'div'];
 const LOT = 100; // 1 lot = 100 lembar (BEI)
 
 // Portofolio dengan metode harga rata-rata. exclude = id transaksi yang sedang diubah.
+// Kunci harga: saham pakai kode langsung (kompatibel versi lama), kripto diberi awalan
+const priceKey = (kind, code) => (kind === 'kripto' ? `kripto:${code}` : code);
+// Jumlah unit transaksi: saham = lot × 100 lembar, kripto = jumlah koin
+const txUnits = (t) => (t.kind === 'kripto' ? t.qty : t.lots * LOT);
+function fmtDec(n, max = 8) { return Number(n).toLocaleString('id-ID', { maximumFractionDigits: max }); }
+function fmtPrice(p) { return p >= 1000 ? Math.round(p).toLocaleString('id-ID') : fmtDec(p, 6); }
+// Portofolio dengan metode harga rata-rata. exclude = id transaksi yang sedang diubah.
 function portfolio(exclude) {
   const h = {};
-  const get = (c) => (h[c] ||= { code: c, lots: 0, cost: 0, realized: 0, div: 0 });
+  const get = (kind, code) => (h[`${kind}:${code}`] ||= { kind, code, units: 0, cost: 0, realized: 0, div: 0 });
   txs.filter((t) => STOCK_TYPES.includes(t.type) && t.id !== exclude)
     .sort((a, b) => a.date.localeCompare(b.date) || a.created - b.created)
     .forEach((t) => {
-      const s = get(t.code);
-      if (t.type === 'buy') { s.lots += t.lots; s.cost += t.amount; }
+      const s = get(t.kind || 'saham', t.code);
+      if (t.type === 'buy') { s.units += txUnits(t); s.cost += t.amount; }
       else if (t.type === 'sell') {
-        if (t.lots > s.lots) s.oversold = true;
-        const sold = Math.min(t.lots, s.lots);
-        const basis = s.lots ? (s.cost / s.lots) * sold : 0;
-        s.cost -= basis; s.lots -= sold; s.realized += t.amount - basis;
-        if (s.lots <= 0) { s.lots = 0; s.cost = 0; }
+        const u = txUnits(t);
+        if (u > s.units + 1e-9) s.oversold = true;
+        const sold = Math.min(u, s.units);
+        const basis = s.units ? (s.cost / s.units) * sold : 0;
+        s.cost -= basis; s.units -= sold; s.realized += t.amount - basis;
+        if (s.units <= 1e-12) { s.units = 0; s.cost = 0; }
       } else s.div += t.amount;
     });
   return Object.values(h).map((s) => {
-    s.avg = s.lots ? s.cost / (s.lots * LOT) : 0;
-    s.price = stocks[s.code]?.price || Math.round(s.avg);
-    s.value = s.lots * LOT * s.price;
+    s.lots = s.kind === 'saham' ? s.units / LOT : 0;
+    s.avg = s.units ? s.cost / s.units : 0;
+    s.price = stocks[priceKey(s.kind, s.code)]?.price || s.avg;
+    s.value = Math.round(s.units * s.price);
     s.pl = s.value - s.cost;
     s.plPct = s.cost ? (s.pl / s.cost) * 100 : 0;
     return s;
@@ -218,7 +227,9 @@ function fmtShort(n) {
   return `${s}${a}`;
 }
 function initials(a) {
-  const words = (a.bank || a.name).replace(/^bank\s+/i, '').trim().split(/\s+/);
+  // Pakai kata pertama yang "utama" saja (abaikan keterangan dalam kurung)
+  const words = (a.bank || a.name).replace(/\(.*?\)/g, '').replace(/^bank\s+/i, '').replace(/[^\p{L}\p{N}\s]/gu, '').trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return '•';
   if (words[0].length <= 4 && words.length === 1) return words[0].toUpperCase();
   return (words.length > 1 ? words.map((w) => w[0]).join('') : words[0].slice(0, 3)).slice(0, 3).toUpperCase();
 }
@@ -235,19 +246,26 @@ function renderSummary() {
   // Kekayaan = kas + saham
   const cash = Object.values(bal).reduce((a, b) => a + b, 0);
   const port = portfolio();
-  const open = port.filter((s) => s.lots > 0);
-  const stockValue = open.reduce((a, s) => a + s.value, 0);
-  const stockCost = open.reduce((a, s) => a + s.cost, 0);
+  const open = port.filter((s) => s.units > 0);
+  const sum = (arr, k) => arr.reduce((a, s) => a + s[k], 0);
+  const stockValue = sum(open, 'value'), stockCost = sum(open, 'cost');
   const stockPl = stockValue - stockCost;
+  const ofKind = (k) => open.filter((s) => s.kind === k);
+  const sahamV = sum(ofKind('saham'), 'value'), sahamC = sum(ofKind('saham'), 'cost');
+  const kriptoV = sum(ofKind('kripto'), 'value'), kriptoC = sum(ofKind('kripto'), 'cost');
   setMoney($('#netWorth'), cash + stockValue);
   setMoney($('#totalBalance'), cash);
-  setMoney($('#heroStock'), stockValue);
-  const plTxt = (v, pct) => `${v >= 0 ? '+' : '−'}${fmtShort(Math.abs(v))}${pct !== undefined ? ` (${v >= 0 ? '+' : '−'}${Math.abs(pct).toLocaleString('id-ID', { maximumFractionDigits: 1 })}%)` : ''}`;
-  $('#heroStockPl').textContent = stockCost ? plTxt(stockPl, (stockPl / stockCost) * 100) : '';
-  $('#heroStockPl').dataset.sign = stockPl >= 0 ? 'up' : 'down';
+  setMoney($('#heroStock'), sahamV);
+  setMoney($('#heroCrypto'), kriptoV);
+  const plTxt = (v, pct) => `${v >= 0 ? '+' : '−'}${fmtShort(Math.abs(Math.round(v)))}${pct !== undefined ? ` (${v >= 0 ? '+' : '−'}${Math.abs(pct).toLocaleString('id-ID', { maximumFractionDigits: 1 })}%)` : ''}`;
+  const setPl = (el, v, c) => { el.textContent = c ? plTxt(v, (v / c) * 100) : ''; el.dataset.sign = v >= 0 ? 'up' : 'down'; };
+  setPl($('#heroStockPl'), sahamV - sahamC, sahamC);
+  setPl($('#heroCryptoPl'), kriptoV - kriptoC, kriptoC);
+  $('#heroCryptoRow').hidden = !port.some((s) => s.kind === 'kripto');
   const total = Math.max(1, Math.max(0, cash) + stockValue);
   $('#splitCash').style.width = `${(Math.max(0, cash) / total) * 100}%`;
-  $('#splitStock').style.width = `${(stockValue / total) * 100}%`;
+  $('#splitStock').style.width = `${(sahamV / total) * 100}%`;
+  $('#splitCrypto').style.width = `${(kriptoV / total) * 100}%`;
 
   // Portofolio saham
   setMoney($('#stockValue'), stockValue);
@@ -258,15 +276,20 @@ function renderSummary() {
   $('#stockRealized').textContent = realized ? plTxt(realized) : 'Rp0';
   $('#stockRealized').dataset.sign = realized >= 0 ? 'up' : 'down';
   setMoney($('#stockDiv'), port.reduce((a, s) => a + s.div, 0));
-  $('#holdings').innerHTML = open.length ? open.map((s) => `
-    <button class="hold" data-code="${esc(s.code)}">
-      <span class="stock-chip">${esc(s.code)}</span>
-      <span class="hold-info"><b>${s.lots.toLocaleString('id-ID')} lot</b><small>${Math.round(s.avg).toLocaleString('id-ID')} → ${s.price.toLocaleString('id-ID')}</small></span>
+  $('#investSplit').innerHTML = open.length ? `<span><i class="dot-stock"></i>Saham ${fmt(sahamV)}</span><span><i class="dot-crypto"></i>Kripto ${fmt(kriptoV)}</span>` : '';
+  const group = (kind) => ofKind(kind).map((s) => `
+    <button class="hold" data-key="${s.kind}:${esc(s.code)}">
+      <span class="stock-chip" data-kind="${s.kind}">${esc(s.code)}</span>
+      <span class="hold-info"><b>${s.kind === 'kripto' ? `${fmtDec(s.units)} ${esc(s.code)}` : `${fmtDec(s.lots)} lot`}</b><small>${fmtPrice(s.avg)} → ${fmtPrice(s.price)}</small></span>
       <span class="hold-val"><b class="money-val">${fmt(s.value)}</b><small class="pl" data-sign="${s.pl >= 0 ? 'up' : 'down'}">${plTxt(s.pl, s.plPct)}</small></span>
-    </button>`).join('')
-    : `<div class="hold-empty"><p class="muted small">Belum ada saham di sini.</p>
-        <button class="btn-primary small-btn" data-existing>📥 Masukkan saham yang sudah kamu punya</button>
-        <p class="muted small">Saham lama dicatat tanpa memotong saldo bank. Untuk pembelian baru, pakai tombol <b>Beli</b>.</p></div>`;
+    </button>`).join('');
+  const groups = ['saham', 'kripto'].filter((k) => ofKind(k).length)
+    .map((k) => `<div class="hold-group"><small class="hold-label">${KIND[k].label}</small>${group(k)}</div>`).join('');
+  $('#holdings').innerHTML = groups ||
+    `<div class="hold-empty"><p class="muted small">Belum ada investasi di sini.</p>
+      <div class="row"><button class="btn-primary small-btn" data-existing="saham">📥 Saham yang sudah dimiliki</button>
+      <button class="btn-ghost small-btn" data-existing="kripto">🪙 Kripto (mis. Indodax)</button></div>
+      <p class="muted small">Aset lama dicatat tanpa memotong saldo bank. Untuk pembelian baru, pakai tombol <b>Beli</b>.</p></div>`;
 
   // Jatah aman dibelanjakan hari ini (dari rekening belanja harian)
   const daily = accounts.filter((a) => a.role === 'harian');
@@ -391,7 +414,7 @@ function renderList() {
 
 function txText(t) {
   const acc = accById(t.account)?.name || '';
-  if (STOCK_TYPES.includes(t.type)) return `${{ buy: 'Beli', sell: 'Jual', div: 'Dividen' }[t.type]} saham ${t.code} ${acc} ${t.note}`;
+  if (STOCK_TYPES.includes(t.type)) return `${{ buy: 'Beli', sell: 'Jual', div: 'Dividen' }[t.type]} ${t.kind === 'kripto' ? 'kripto' : 'saham'} ${t.code} ${acc} ${t.note}`;
   if (t.type === 'transfer') return `Transfer ${acc} ${accById(t.to)?.name || ''} ${t.note}`;
   return `${CAT_MAP[t.category]?.name || ''} ${acc} ${t.note}`;
 }
@@ -400,9 +423,11 @@ function txRow(t) {
   const tag = (a) => `<span class="acc-tag"><i class="dot" style="--c:${a.color}"></i>${esc(a.name)}</span>`;
   let icon, title, sub, sign, cls = t.type;
   if (STOCK_TYPES.includes(t.type)) {
-    icon = { buy: '📈', sell: '💹', div: '🪙' }[t.type];
-    title = t.account === EXISTING ? `Saham lama ${esc(t.code)}` : `${{ buy: 'Beli', sell: 'Jual', div: 'Dividen' }[t.type]} ${esc(t.code)}`;
-    sub = t.account === EXISTING ? `${t.lots.toLocaleString('id-ID')} lot @ ${t.price.toLocaleString('id-ID')} · tidak memotong saldo` : t.type === 'div' ? `ke ${tag(acc)}` : `${t.lots.toLocaleString('id-ID')} lot @ ${t.price.toLocaleString('id-ID')} · ${t.type === 'buy' ? 'dari' : 'ke'} ${tag(acc)}`;
+    const kr = t.kind === 'kripto';
+    icon = kr ? '🪙' : { buy: '📈', sell: '💹', div: '💸' }[t.type];
+    const qtyTxt = kr ? `${fmtDec(t.qty)} ${esc(t.code)} @ ${fmtPrice(t.price)}` : `${fmtDec(t.lots)} lot @ ${fmtPrice(t.price)}`;
+    title = t.account === EXISTING ? `${kr ? 'Kripto' : 'Saham'} lama ${esc(t.code)}` : `${{ buy: 'Beli', sell: 'Jual', div: 'Dividen' }[t.type]} ${esc(t.code)}`;
+    sub = t.account === EXISTING ? `${qtyTxt} · tidak memotong saldo` : t.type === 'div' ? `ke ${tag(acc)}` : `${qtyTxt} · ${t.type === 'buy' ? 'dari' : 'ke'} ${tag(acc)}`;
     sign = t.account === EXISTING ? '' : t.type === 'buy' ? '−' : '+';
     cls = t.type === 'div' ? 'in' : 'transfer';
     if (t.account === EXISTING) icon = '📥';
@@ -722,46 +747,77 @@ $('#srcDeleteBtn').addEventListener('click', () => {
   toast(used.length ? `Sumber dihapus, ${used.length} pemasukan dipindah ke "${target[2]}"` : 'Sumber dihapus');
 });
 
-// ---------- Saham: beli, jual, dividen ----------
-const FEE = { buy: 0.0015, sell: 0.0025 }; // perkiraan biaya broker (jual sudah termasuk pajak 0,1%)
+// ---------- Investasi: saham & kripto ----------
+// Biaya perkiraan (bisa diubah per transaksi). Saham: broker + pajak jual 0,1%. Kripto: perkiraan biaya bursa, cek di Indodax.
+const FEE = { saham: { buy: 0.0015, sell: 0.0025 }, kripto: { buy: 0.003, sell: 0.003 } };
+const KIND = { saham: { unit: 'lot', label: 'Saham', ph: 'mis. BBCA' }, kripto: { unit: 'koin', label: 'Kripto', ph: 'mis. BTC' } };
 let editingTradeId = null, feeTouched = false;
 const tType = () => document.querySelector('input[name="ttype"]:checked').value;
-function ownedLots(code) { return portfolio(editingTradeId).find((s) => s.code === code)?.lots || 0; }
+const tKind = () => document.querySelector('input[name="tkind"]:checked').value;
+// Angka desimal ala Indonesia: "0,0015" / "1.250.000,5" / "0.0015"
+function parseDec(s) {
+  s = String(s).trim().replace(/[^\d.,]/g, '');
+  if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+  else if ((s.match(/\./g) || []).length > 1) s = s.replace(/\./g, '');
+  return Number(s) || 0;
+}
+const decInput = (n) => (n ? Number(n).toLocaleString('id-ID', { maximumFractionDigits: 10, useGrouping: false }) : '');
+const qtyOf = () => (tKind() === 'kripto' ? parseDec($('#tLots').value) : num($('#tLots').value));
+const priceOf = () => (tKind() === 'kripto' ? parseDec($('#tPrice').value) : num($('#tPrice').value));
+const unitsOf = (kind, q) => (kind === 'kripto' ? q : q * LOT);
+function ownedQty(kind, code) {
+  const s = portfolio(editingTradeId).find((x) => x.kind === kind && x.code === code);
+  return s ? (kind === 'kripto' ? s.units : s.lots) : 0;
+}
 function applyTradeType() {
+  const kind = tKind();
+  // Kripto tidak punya dividen
+  $('#tDivKind').disabled = kind === 'kripto';
+  if (kind === 'kripto' && tType() === 'div') document.querySelector('input[name="ttype"][value="buy"]').checked = true;
   const type = tType(), isDiv = type === 'div';
   const cur = $('#tAccount').value;
-  if (cur !== undefined) tradeAccOptions(type, cur === EXISTING && type !== 'buy' ? payrollAcc().id : cur || payrollAcc().id);
+  tradeAccOptions(type, cur === EXISTING && type !== 'buy' ? payrollAcc().id : cur || payrollAcc().id);
   const isExisting = $('#tAccount').value === EXISTING;
   $('#tLotsWrap').hidden = isDiv; $('#tPriceRow').hidden = isDiv; $('#tDivWrap').hidden = !isDiv;
   $('#tAccLabel').textContent = type === 'buy' ? 'Sumber dana' : 'Uang masuk ke rekening';
-  $('#tPrice').previousSibling.textContent = isExisting ? 'Harga rata-rata / lembar' : 'Harga / lembar';
-  $('#tFeeHint').textContent = isDiv || isExisting ? '' : `≈${(FEE[type] * 100).toLocaleString('id-ID')}%`;
+  $('#tCode').placeholder = KIND[kind].ph;
+  $('#tLotsLabel').textContent = kind === 'kripto' ? 'Jumlah koin' : 'Jumlah lot';
+  $('#tPriceLabel').textContent = `${isExisting ? 'Harga rata-rata' : 'Harga'} / ${kind === 'kripto' ? 'koin (Rp)' : 'lembar'}`;
+  $('#tFeeLabel').textContent = kind === 'kripto' ? 'Biaya trading' : 'Biaya broker';
+  // Kripto boleh desimal, jadi tanpa format ribuan otomatis
+  ['#tLots', '#tPrice'].forEach((sel) => {
+    $(sel).classList.toggle('money', kind === 'saham');
+    $(sel).inputMode = kind === 'kripto' ? 'decimal' : 'numeric';
+  });
+  $('#tFeeHint').textContent = isDiv || isExisting ? '' : `≈${(FEE[kind][type] * 100).toLocaleString('id-ID')}%`;
   if (!feeTouched) autoFee();
   updateTradeSummary();
 }
 function autoFee() {
   const type = tType(); if (type === 'div') return;
   if ($('#tAccount').value === EXISTING) { $('#tFee').value = ''; return; }
-  const gross = num($('#tLots').value) * LOT * num($('#tPrice').value);
-  $('#tFee').value = money(Math.round(gross * FEE[type]));
+  const gross = unitsOf(tKind(), qtyOf()) * priceOf();
+  $('#tFee').value = money(Math.round(gross * FEE[tKind()][type]));
 }
 function updateTradeSummary() {
-  const type = tType(), code = $('#tCode').value.trim().toUpperCase();
-  const owned = code ? ownedLots(code) : 0;
-  $('#tOwned').textContent = type === 'sell' && code ? `(punya ${owned.toLocaleString('id-ID')})` : '';
+  const type = tType(), kind = tKind(), code = $('#tCode').value.trim().toUpperCase();
+  const owned = code ? ownedQty(kind, code) : 0;
+  $('#tOwned').textContent = type === 'sell' && code ? `(punya ${fmtDec(owned)})` : '';
   if (type === 'div') { $('#tSummary').innerHTML = num($('#tDiv').value) ? `Dividen <b>${fmt(num($('#tDiv').value))}</b> masuk ke saldo kas` : ''; return; }
-  const lots = num($('#tLots').value), price = num($('#tPrice').value), fee = num($('#tFee').value);
-  if (!lots || !price) { $('#tSummary').innerHTML = ''; return; }
-  const gross = lots * LOT * price;
+  const q = qtyOf(), price = priceOf(), fee = num($('#tFee').value);
+  if (!q || !price) { $('#tSummary').innerHTML = ''; return; }
+  const gross = Math.round(unitsOf(kind, q) * price);
+  const calc = kind === 'kripto' ? `${fmtDec(q)} ${esc(code || 'koin')} × ${fmtPrice(price)}` : `${fmtDec(q)} lot × 100 × ${fmtPrice(price)}`;
   if (type === 'buy' && $('#tAccount').value === EXISTING) {
-    $('#tSummary').innerHTML = `Modal ${lots.toLocaleString('id-ID')} lot × 100 × ${price.toLocaleString('id-ID')} = <b>${fmt(gross + fee)}</b><br>📥 Dicatat sebagai saham yang sudah kamu punya. <b>Saldo bank tidak berubah.</b>`;
+    $('#tSummary').innerHTML = `Modal ${calc} = <b>${fmt(gross + fee)}</b><br>📥 Dicatat sebagai aset yang sudah kamu punya. <b>Saldo bank tidak berubah.</b>`;
   } else if (type === 'buy') {
-    $('#tSummary').innerHTML = `${lots.toLocaleString('id-ID')} lot × 100 × ${price.toLocaleString('id-ID')} = ${fmt(gross)}<br>Total dibayar <b>${fmt(gross + fee)}</b> dari saldo rekening`;
+    $('#tSummary').innerHTML = `${calc} = ${fmt(gross)}<br>Total dibayar <b>${fmt(gross + fee)}</b> dari saldo rekening`;
   } else {
-    const s = portfolio(editingTradeId).find((x) => x.code === code);
-    const basis = s && s.lots ? (s.cost / s.lots) * Math.min(lots, s.lots) : 0;
+    const s = portfolio(editingTradeId).find((x) => x.kind === kind && x.code === code);
+    const u = unitsOf(kind, q);
+    const basis = s && s.units ? (s.cost / s.units) * Math.min(u, s.units) : 0;
     const pl = gross - fee - basis;
-    $('#tSummary').innerHTML = `Diterima <b>${fmt(gross - fee)}</b>` +
+    $('#tSummary').innerHTML = `${calc} = ${fmt(gross)}<br>Diterima <b>${fmt(gross - fee)}</b>` +
       (basis ? `<br>Perkiraan ${pl >= 0 ? 'untung' : 'rugi'} <b class="pl" data-sign="${pl >= 0 ? 'up' : 'down'}">${fmt(Math.abs(Math.round(pl)))}</b>` : '');
   }
 }
@@ -769,35 +825,46 @@ function tradeAccOptions(type, selected) {
   accOptions($('#tAccount'), selected);
   if (type === 'buy') {
     $('#tAccount').insertAdjacentHTML('afterbegin',
-      `<option value="${EXISTING}" ${selected === EXISTING ? 'selected' : ''}>📥 Saham lama (saldo tidak dipotong)</option>`);
+      `<option value="${EXISTING}" ${selected === EXISTING ? 'selected' : ''}>📥 Aset lama (saldo tidak dipotong)</option>`);
   }
 }
-function openTrade(type = 'buy', tx = null, code = '', existing = false) {
+function openTrade(type = 'buy', tx = null, code = '', existing = false, kind = 'saham') {
+  kind = tx?.kind || kind;
   editingTradeId = tx?.id || null; feeTouched = !!tx;
+  document.querySelector(`input[name="tkind"][value="${kind}"]`).checked = true;
   document.querySelector(`input[name="ttype"][value="${type}"]`).checked = true;
-  $('#tradeTitle').textContent = tx ? 'Ubah transaksi saham' : existing ? 'Masukkan saham lama' : 'Transaksi saham';
-  $('#codeList').innerHTML = portfolio().map((s) => `<option value="${esc(s.code)}">`).join('');
+  $('#tradeTitle').textContent = tx ? 'Ubah transaksi investasi' : existing ? 'Masukkan aset lama' : 'Transaksi investasi';
+  $('#codeList').innerHTML = portfolio().filter((s) => s.kind === kind).map((s) => `<option value="${esc(s.code)}">`).join('');
   $('#tCode').value = tx?.code || code;
-  $('#tLots').value = money(tx?.lots);
-  $('#tPrice').value = money(tx?.price || (code && stocks[code]?.price) || '');
+  const fmtIn = kind === 'kripto' ? decInput : money;
+  $('#tLots').value = fmtIn(tx ? (kind === 'kripto' ? tx.qty : tx.lots) : '');
+  $('#tPrice').value = fmtIn(tx?.price || (code && stocks[priceKey(kind, code)]?.price) || '');
   $('#tFee').value = money(tx?.fee);
   $('#tDiv').value = money(tx?.type === 'div' ? tx.amount : '');
-  // Rekening default: terakhir dipakai untuk saham, kalau belum ada pakai rekening payroll
+  // Rekening default: terakhir dipakai untuk investasi, kalau belum ada pakai rekening payroll
   const last = loadJSON('keuangan.last') || {};
   tradeAccOptions(type, tx?.account || (existing ? EXISTING : accById(last.stock) ? last.stock : payrollAcc().id));
   $('#tDate').value = tx?.date || todayISO();
   $('#tNote').value = tx?.note || '';
   $('#tDeleteBtn').hidden = !tx;
+  $('#tKindRow').hidden = !!tx; // jenis aset transaksi lama tidak diubah
   applyTradeType();
   $('#tradeDialog').showModal();
 }
 document.querySelectorAll('input[name="ttype"]').forEach((r) => r.addEventListener('change', applyTradeType));
+document.querySelectorAll('input[name="tkind"]').forEach((r) => r.addEventListener('change', () => {
+  $('#tLots').value = ''; $('#tPrice').value = ''; feeTouched = false;
+  $('#codeList').innerHTML = portfolio().filter((s) => s.kind === tKind()).map((s) => `<option value="${esc(s.code)}">`).join('');
+  applyTradeType();
+}));
 $('#tAccount').addEventListener('change', () => {
-  // Saham lama: yang diisi harga rata-rata, jadi tanpa biaya broker
+  // Aset lama: yang diisi harga rata-rata, jadi tanpa biaya
   if ($('#tAccount').value === EXISTING) { feeTouched = false; $('#tFee').value = ''; }
   if (!feeTouched) autoFee(); applyTradeType();
 });
-$('#holdings').addEventListener('click', (e) => { if (e.target.closest('[data-existing]')) openTrade('buy', null, '', true); });
+$('#holdings').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-existing]'); if (b) openTrade('buy', null, '', true, b.dataset.existing || 'saham');
+});
 $('#existingBtn').addEventListener('click', () => openTrade('buy', null, '', true));
 ['#tLots', '#tPrice'].forEach((sel) => $(sel).addEventListener('input', () => { if (!feeTouched) autoFee(); updateTradeSummary(); }));
 $('#tFee').addEventListener('input', () => { feeTouched = true; updateTradeSummary(); });
@@ -805,30 +872,33 @@ $('#tDiv').addEventListener('input', updateTradeSummary);
 $('#tCode').addEventListener('input', () => {
   const v = $('#tCode').value.toUpperCase().replace(/[^A-Z0-9]/g, '');
   if (v !== $('#tCode').value) $('#tCode').value = v;
-  if (!$('#tPrice').value && stocks[v]?.price) $('#tPrice').value = money(stocks[v].price);
+  const p = stocks[priceKey(tKind(), v)]?.price;
+  if (!$('#tPrice').value && p) $('#tPrice').value = tKind() === 'kripto' ? decInput(p) : money(p);
   updateTradeSummary();
 });
 document.querySelectorAll('[data-trade]').forEach((b) => b.addEventListener('click', () => openTrade(b.dataset.trade)));
 $('#tradeForm').addEventListener('submit', (e) => {
-  const type = tType(), code = $('#tCode').value.trim().toUpperCase();
+  const type = tType(), kind = tKind(), code = $('#tCode').value.trim().toUpperCase();
   const fail = (msg, sel) => { e.preventDefault(); toast(msg); if (sel) $(sel).focus(); };
-  if (!/^[A-Z0-9]{2,6}$/.test(code)) return fail('Isi kode saham, mis. BBCA', '#tCode');
-  const data = { type, code, account: $('#tAccount').value, date: $('#tDate').value, note: $('#tNote').value.trim(), category: null };
+  if (!/^[A-Z0-9]{2,10}$/.test(code)) return fail(`Isi kode ${kind}, ${KIND[kind].ph}`, '#tCode');
+  const data = { type, kind, code, account: $('#tAccount').value, date: $('#tDate').value, note: $('#tNote').value.trim(), category: null };
   if (type === 'div') {
-    data.amount = num($('#tDiv').value); data.lots = 0; data.price = 0; data.fee = 0;
+    data.amount = num($('#tDiv').value); data.lots = 0; data.qty = 0; data.price = 0; data.fee = 0;
     if (!data.amount) return fail('Isi jumlah dividen', '#tDiv');
   } else {
-    data.lots = num($('#tLots').value); data.price = num($('#tPrice').value); data.fee = num($('#tFee').value);
-    if (!data.lots) return fail('Isi jumlah lot', '#tLots');
-    if (!data.price) return fail('Isi harga per lembar', '#tPrice');
-    const gross = data.lots * LOT * data.price;
+    const q = qtyOf(); data.price = priceOf(); data.fee = num($('#tFee').value);
+    if (!q) return fail(kind === 'kripto' ? 'Isi jumlah koin' : 'Isi jumlah lot', '#tLots');
+    if (!data.price) return fail('Isi harga', '#tPrice');
+    if (kind === 'kripto') { data.qty = q; data.lots = 0; } else { data.lots = q; data.qty = 0; }
+    const gross = Math.round(unitsOf(kind, q) * data.price);
     if (type === 'sell') {
-      const owned = ownedLots(code);
-      if (data.lots > owned) return fail(owned ? `Kamu hanya punya ${owned} lot ${code}` : `Belum ada saham ${code} untuk dijual`, '#tLots');
+      const owned = ownedQty(kind, code);
+      if (q > owned + 1e-12) return fail(owned ? `Kamu hanya punya ${fmtDec(owned)} ${kind === 'kripto' ? code : `lot ${code}`}` : `Belum ada ${code} untuk dijual`, '#tLots');
       data.amount = gross - data.fee;
     } else data.amount = gross + data.fee;
     // Harga transaksi terbaru dipakai sebagai harga terakhir
-    if (!stocks[code] || (stocks[code].date || '') <= data.date) stocks[code] = { price: data.price, date: data.date };
+    const k = priceKey(kind, code);
+    if (!stocks[k] || (stocks[k].date || '') <= data.date) stocks[k] = { price: data.price, date: data.date };
   }
   let id = editingTradeId;
   if (id) Object.assign(txs.find((t) => t.id === id), data);
@@ -837,60 +907,92 @@ $('#tradeForm').addEventListener('submit', (e) => {
   const last = loadJSON('keuangan.last') || {}; if (data.account !== EXISTING) last.stock = data.account;
   try { localStorage.setItem('keuangan.last', JSON.stringify(last)); } catch {}
   save();
-  // Pindah ke bulan transaksi, kecuali saham lama (tanggalnya bisa bertahun-tahun lalu)
+  // Pindah ke bulan transaksi, kecuali aset lama (tanggalnya bisa bertahun-tahun lalu)
   if (data.account !== EXISTING) { const d = new Date(data.date + 'T00:00'); view = new Date(d.getFullYear(), d.getMonth(), 1); }
   render(); buzz();
   if (type === 'div') confetti(40);
-  toast(data.account === EXISTING ? `📥 Saham ${code} ditambahkan (saldo tidak berubah)` : { buy: `📈 Beli ${code} dicatat`, sell: `💹 Jual ${code} dicatat`, div: `🪙 Dividen ${code} dicatat` }[type]);
+  toast(data.account === EXISTING ? `📥 ${code} ditambahkan (saldo tidak berubah)` : { buy: `📈 Beli ${code} dicatat`, sell: `💹 Jual ${code} dicatat`, div: `💸 Dividen ${code} dicatat` }[type]);
 });
 $('#tDeleteBtn').addEventListener('click', () => {
   const t = txs.find((x) => x.id === editingTradeId);
-  if (t.type === 'buy') {
-    // Pastikan penjualan sesudahnya tetap masuk akal
-    if (portfolio(t.id).find((s) => s.code === t.code)?.oversold) { alert('Saham dari pembelian ini sudah dijual. Hapus transaksi jualnya dulu.'); return; }
+  if (t.type === 'buy' && portfolio(t.id).find((s) => s.kind === (t.kind || 'saham') && s.code === t.code)?.oversold) {
+    alert('Aset dari pembelian ini sudah dijual. Hapus transaksi jualnya dulu.'); return;
   }
-  if (!confirm('Hapus transaksi saham ini?')) return;
+  if (!confirm('Hapus transaksi investasi ini?')) return;
   txs = txs.filter((x) => x.id !== editingTradeId);
-  save(); render(); $('#tradeDialog').close(); toast('Transaksi saham dihapus');
+  save(); render(); $('#tradeDialog').close(); toast('Transaksi investasi dihapus');
 });
 
-// Detail satu saham
-let holdCode = null;
+// Detail satu aset
+let holdKey = null;
+const findHold = (key) => portfolio().find((x) => `${x.kind}:${x.code}` === key);
 $('#holdings').addEventListener('click', (e) => {
-  const b = e.target.closest('[data-code]'); if (!b) return;
-  holdCode = b.dataset.code;
-  const s = portfolio().find((x) => x.code === holdCode);
-  $('#hCode').textContent = s.code;
+  const b = e.target.closest('[data-key]'); if (!b) return;
+  holdKey = b.dataset.key;
+  const s = findHold(holdKey), kr = s.kind === 'kripto';
+  $('#hCode').textContent = s.code; $('#hCode').dataset.kind = s.kind;
   $('#hValue').textContent = fmt(s.value);
   $('#hPl').textContent = `${s.pl >= 0 ? 'Untung' : 'Rugi'} ${fmt(Math.abs(Math.round(s.pl)))} (${s.plPct >= 0 ? '+' : '−'}${Math.abs(s.plPct).toLocaleString('id-ID', { maximumFractionDigits: 1 })}%)`;
   $('#hPl').dataset.sign = s.pl >= 0 ? 'up' : 'down';
   const cell = (k, v) => `<div><small>${k}</small><b>${v}</b></div>`;
-  $('#hGrid').innerHTML = cell('Jumlah', `${s.lots.toLocaleString('id-ID')} lot (${(s.lots * LOT).toLocaleString('id-ID')} lbr)`) +
-    cell('Harga rata-rata', Math.round(s.avg).toLocaleString('id-ID')) + cell('Modal', fmt(Math.round(s.cost))) +
-    cell('Dividen diterima', fmt(s.div)) + (s.realized ? cell('Untung/rugi terealisasi', fmt(Math.round(s.realized))) : '');
-  $('#hPrice').value = money(s.price);
+  $('#hGrid').innerHTML = cell('Jumlah', kr ? `${fmtDec(s.units)} ${esc(s.code)}` : `${fmtDec(s.lots)} lot (${fmtDec(s.units)} lbr)`) +
+    cell('Harga rata-rata', fmtPrice(s.avg)) + cell('Modal', fmt(Math.round(s.cost))) +
+    (kr ? cell('Jenis', 'Kripto') : cell('Dividen diterima', fmt(s.div))) + (s.realized ? cell('Untung/rugi terealisasi', fmt(Math.round(s.realized))) : '');
+  $('#hPriceLabel').textContent = kr ? 'Harga terakhir / koin (Rp)' : 'Harga terakhir / lembar';
+  $('#hPrice').classList.toggle('money', !kr);
+  $('#hPrice').inputMode = kr ? 'decimal' : 'numeric';
+  $('#hPrice').value = kr ? decInput(s.price) : money(s.price);
+  $('#hDivBtn').hidden = kr;
   $('#holdDialog').showModal();
 });
 $('#holdForm').addEventListener('submit', () => {
-  const p = num($('#hPrice').value);
-  if (p) { stocks[holdCode] = { price: p, date: todayISO() }; save(); render(); toast(`Harga ${holdCode} diperbarui`); }
+  const s = findHold(holdKey);
+  const p = s.kind === 'kripto' ? parseDec($('#hPrice').value) : num($('#hPrice').value);
+  if (p) { stocks[priceKey(s.kind, s.code)] = { price: p, date: todayISO() }; save(); render(); toast(`Harga ${s.code} diperbarui`); }
 });
 document.querySelectorAll('[data-hold]').forEach((b) => b.addEventListener('click', () => {
-  $('#holdDialog').close(); openTrade(b.dataset.hold, null, holdCode);
+  const s = findHold(holdKey);
+  $('#holdDialog').close(); openTrade(b.dataset.hold, null, s.code, false, s.kind);
 }));
 
-// Perbarui harga semua saham sekaligus
+// Perbarui harga semua aset sekaligus
 $('#priceBtn').addEventListener('click', () => {
-  const open = portfolio().filter((s) => s.lots > 0);
-  if (!open.length) { toast('Belum ada saham untuk diperbarui'); return; }
-  $('#priceRows').innerHTML = open.map((s) => `<label class="split-row"><span><span class="stock-chip">${esc(s.code)}</span>
-    <small>${s.lots.toLocaleString('id-ID')} lot · rata-rata ${Math.round(s.avg).toLocaleString('id-ID')}</small></span>
-    <input class="money" inputmode="numeric" data-code="${esc(s.code)}" value="${money(s.price)}"></label>`).join('');
+  const open = portfolio().filter((s) => s.units > 0);
+  if (!open.length) { toast('Belum ada aset untuk diperbarui'); return; }
+  $('#priceRows').innerHTML = open.map((s) => `<label class="split-row"><span><span class="stock-chip" data-kind="${s.kind}">${esc(s.code)}</span>
+    <small>${s.kind === 'kripto' ? `${fmtDec(s.units)} koin` : `${fmtDec(s.lots)} lot`} · rata-rata ${fmtPrice(s.avg)}</small></span>
+    <input ${s.kind === 'kripto' ? 'inputmode="decimal"' : 'class="money" inputmode="numeric"'} data-key="${s.kind}:${esc(s.code)}"
+      value="${s.kind === 'kripto' ? decInput(s.price) : money(s.price)}"></label>`).join('');
+  $('#indodaxBtn').hidden = !open.some((s) => s.kind === 'kripto');
   $('#priceDialog').showModal();
 });
 $('#priceForm').addEventListener('submit', () => {
-  document.querySelectorAll('#priceRows input').forEach((i) => { const p = num(i.value); if (p) stocks[i.dataset.code] = { price: p, date: todayISO() }; });
-  save(); render(); toast('Harga saham diperbarui');
+  document.querySelectorAll('#priceRows input').forEach((i) => {
+    const [kind, code] = i.dataset.key.split(':');
+    const p = kind === 'kripto' ? parseDec(i.value) : num(i.value);
+    if (p) stocks[priceKey(kind, code)] = { price: p, date: todayISO() };
+  });
+  save(); render(); toast('Harga diperbarui');
+});
+// Ambil harga kripto terakhir dari API publik Indodax (tanpa login, tanpa kunci API).
+// Hanya dijalankan saat tombol ditekan; kalau gagal, harga tetap bisa diisi manual.
+$('#indodaxBtn').addEventListener('click', async () => {
+  const inputs = [...document.querySelectorAll('#priceRows input')].filter((i) => i.dataset.key.startsWith('kripto:'));
+  if (!navigator.onLine) { toast('Tidak ada internet'); return; }
+  $('#indodaxBtn').disabled = true; $('#indodaxBtn').textContent = 'Mengambil harga…';
+  let ok = 0;
+  await Promise.all(inputs.map(async (i) => {
+    const code = i.dataset.key.split(':')[1].toLowerCase();
+    try {
+      const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 8000);
+      const r = await fetch(`https://indodax.com/api/ticker/${code}idr`, { signal: ctrl.signal, cache: 'no-store' });
+      clearTimeout(t);
+      const last = Number((await r.json())?.ticker?.last);
+      if (last > 0) { i.value = decInput(last); i.classList.add('fetched'); ok++; }
+    } catch {}
+  }));
+  $('#indodaxBtn').disabled = false; $('#indodaxBtn').textContent = '⚡ Ambil harga kripto dari Indodax';
+  toast(ok ? `${ok} harga kripto diambil dari Indodax — ketuk Simpan` : 'Gagal mengambil harga dari Indodax. Isi manual saja.');
 });
 
 // ---------- Bagi gaji ----------
@@ -948,11 +1050,11 @@ $('#exportBtn').addEventListener('click', () =>
   download(`keuangan-${todayISO()}.json`, JSON.stringify({ version: 4, accounts, sources: CATEGORIES.in, stocks, txs }, null, 2), 'application/json'));
 $('#exportCsvBtn').addEventListener('click', () => {
   const q = (s) => `"${String(s ?? '').replace(/"/g, '""')}"`;
-  const JENIS = { in: 'Pemasukan', out: 'Pengeluaran', transfer: 'Transfer', buy: 'Beli saham', sell: 'Jual saham', div: 'Dividen saham' };
+  const JENIS = { in: 'Pemasukan', out: 'Pengeluaran', transfer: 'Transfer', buy: 'Beli', sell: 'Jual', div: 'Dividen saham' };
   const lines = [['Tanggal', 'Jenis', 'Rekening', 'Ke Rekening', 'Kategori', 'Jumlah', 'Catatan'].join(',')];
   [...txs].sort((a, b) => a.date.localeCompare(b.date)).forEach((t) => lines.push([
     t.date, JENIS[t.type], q(accById(t.account)?.name), q(t.to ? accById(t.to)?.name : ''),
-    q(t.code ? `${t.code}${t.lots ? ` ${t.lots} lot @ ${t.price}` : ''}` : t.category ? CAT_MAP[t.category]?.name || t.category : ''), t.amount, q(t.note),
+    q(t.code ? `${t.kind === 'kripto' ? 'Kripto' : 'Saham'} ${t.code}${t.type !== 'div' ? ` ${t.kind === 'kripto' ? `${t.qty} koin` : `${t.lots} lot`} @ ${t.price}` : ''}` : t.category ? CAT_MAP[t.category]?.name || t.category : ''), t.amount, q(t.note),
   ].join(',')));
   download(`keuangan-${todayISO()}.csv`, '﻿' + lines.join('\n'), 'text/csv');
 });
@@ -977,7 +1079,7 @@ $('#importFile').addEventListener('change', async (e) => {
       for (const [c, v] of Object.entries(data.stocks)) if (!stocks[c] && v && Number.isFinite(v.price)) stocks[c] = v;
     }
     const valid = inTx.filter((t) => t && t.id && ['in', 'out', 'transfer', ...STOCK_TYPES].includes(t.type) &&
-      (!STOCK_TYPES.includes(t.type) || (typeof t.code === 'string' && t.code)) &&
+      (!STOCK_TYPES.includes(t.type) || (typeof t.code === 'string' && t.code && (t.kind !== 'kripto' || Number.isFinite(t.qty)))) &&
       Number.isFinite(t.amount) && /^\d{4}-\d{2}-\d{2}$/.test(t.date) && (t.type !== 'transfer' || accById(t.to)));
     const ids = new Set(txs.map((t) => t.id));
     const added = valid.filter((t) => !ids.has(t.id)).map((t) => ({ note: '', created: Date.now(), ...t }));
@@ -988,7 +1090,7 @@ $('#importFile').addEventListener('change', async (e) => {
 });
 
 // ---------- PWA ----------
-const APP_VERSION = '9 · 18 Nov 2026';
+const APP_VERSION = '10 · 18 Nov 2026';
 $('#appVersion').textContent = APP_VERSION;
 let swReg = null;
 if ('serviceWorker' in navigator) {

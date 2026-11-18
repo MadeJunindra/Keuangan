@@ -52,10 +52,11 @@
       <div class="hero-glow" aria-hidden="true"></div>
       <small>Total kekayaan</small>
       <strong id="netWorth" class="money-val">Rp0</strong>
-      <div class="split-bar" aria-hidden="true"><i id="splitCash"></i><i id="splitStock"></i></div>
+      <div class="split-bar" aria-hidden="true"><i id="splitCash"></i><i id="splitStock"></i><i id="splitCrypto"></i></div>
       <div class="hero-foot">
         <span><i class="dot-cash"></i>Saldo kas <b id="totalBalance">Rp0</b></span>
         <span><i class="dot-stock"></i>Saham <b id="heroStock">Rp0</b> <em id="heroStockPl" class="pl"></em></span>
+        <span id="heroCryptoRow" hidden><i class="dot-crypto"></i>Kripto <b id="heroCrypto">Rp0</b> <em id="heroCryptoPl" class="pl"></em></span>
       </div>
     </section>
 
@@ -89,9 +90,9 @@
 
     <section class="block reveal">
       <div class="block-head">
-        <h2>Portofolio Saham</h2>
+        <h2>Investasi</h2>
         <div class="head-links">
-          <button id="existingBtn" class="link-btn">+ Saham lama</button>
+          <button id="existingBtn" class="link-btn">+ Aset lama</button>
           <button id="priceBtn" class="link-btn">Update harga</button>
         </div>
       </div>
@@ -105,11 +106,12 @@
           <span>Terealisasi <b id="stockRealized" class="pl">Rp0</b></span>
           <span>Dividen <b id="stockDiv">Rp0</b></span>
         </div>
+        <div id="investSplit" class="invest-split"></div>
         <div id="holdings"></div>
         <div class="invest-actions">
           <button class="btn-ghost" data-trade="buy">📈 Beli</button>
           <button class="btn-ghost" data-trade="sell">💹 Jual</button>
-          <button class="btn-ghost" data-trade="div">🪙 Dividen</button>
+          <button class="btn-ghost" data-trade="div">💸 Dividen</button>
         </div>
       </div>
     </section>
@@ -320,26 +322,30 @@
   <dialog id="tradeDialog" class="sheet">
     <form id="tradeForm" method="dialog" class="sheet-form">
       <div class="grabber" aria-hidden="true"></div>
-      <h2 id="tradeTitle">Transaksi saham</h2>
+      <h2 id="tradeTitle">Transaksi investasi</h2>
+      <div class="toggle kind" id="tKindRow">
+        <label><input type="radio" name="tkind" value="saham" checked><span>📈 Saham</span></label>
+        <label><input type="radio" name="tkind" value="kripto"><span>🪙 Kripto</span></label>
+      </div>
       <div class="toggle three">
         <label><input type="radio" name="ttype" value="buy" checked><span>Beli</span></label>
         <label><input type="radio" name="ttype" value="sell"><span>Jual</span></label>
-        <label><input type="radio" name="ttype" value="div"><span>Dividen</span></label>
+        <label><input type="radio" name="ttype" value="div" id="tDivKind"><span>Dividen</span></label>
       </div>
       <div class="two">
-        <label>Kode saham
-          <input id="tCode" maxlength="6" autocapitalize="characters" autocomplete="off" spellcheck="false" list="codeList" placeholder="mis. BBCA">
+        <label>Kode
+          <input id="tCode" maxlength="10" autocapitalize="characters" autocomplete="off" spellcheck="false" list="codeList" placeholder="mis. BBCA">
         </label>
-        <label id="tLotsWrap">Jumlah lot <small class="muted" id="tOwned"></small>
+        <label id="tLotsWrap"><span><span id="tLotsLabel">Jumlah lot</span> <small class="muted" id="tOwned"></small></span>
           <input id="tLots" inputmode="numeric" class="money" placeholder="0">
         </label>
       </div>
       <datalist id="codeList"></datalist>
       <div class="two" id="tPriceRow">
-        <label>Harga / lembar
+        <label><span id="tPriceLabel">Harga / lembar</span>
           <input id="tPrice" inputmode="numeric" class="money" placeholder="0">
         </label>
-        <label>Biaya broker <small class="muted" id="tFeeHint"></small>
+        <label><span><span id="tFeeLabel">Biaya broker</span> <small class="muted" id="tFeeHint"></small></span>
           <input id="tFee" inputmode="numeric" class="money" placeholder="0">
         </label>
       </div>
@@ -376,13 +382,13 @@
         <div><h2 id="hValue"></h2><small id="hPl" class="pl"></small></div>
       </div>
       <div class="hold-grid" id="hGrid"></div>
-      <label>Harga terakhir / lembar <small class="muted">lihat di aplikasi sekuritasmu</small>
+      <label><span id="hPriceLabel">Harga terakhir / lembar</span>
         <input id="hPrice" inputmode="numeric" class="money" placeholder="0">
       </label>
       <div class="invest-actions">
         <button type="button" class="btn-ghost" data-hold="buy">📈 Beli lagi</button>
         <button type="button" class="btn-ghost" data-hold="sell">💹 Jual</button>
-        <button type="button" class="btn-ghost" data-hold="div">🪙 Dividen</button>
+        <button type="button" class="btn-ghost" data-hold="div" id="hDivBtn">💸 Dividen</button>
       </div>
       <div class="row end">
         <span class="spacer"></span>
@@ -396,8 +402,9 @@
   <dialog id="priceDialog" class="sheet">
     <form id="priceForm" method="dialog" class="sheet-form">
       <div class="grabber" aria-hidden="true"></div>
-      <h2>Perbarui harga saham</h2>
-      <p class="muted small">Isi harga terakhir per lembar dari aplikasi sekuritasmu. Nilai portofolio dan untung/rugi langsung dihitung ulang.</p>
+      <h2>Perbarui harga</h2>
+      <p class="muted small">Isi harga terakhir dari aplikasi sekuritas atau Indodax. Nilai investasi dan untung/rugi langsung dihitung ulang.</p>
+      <button type="button" id="indodaxBtn" class="btn-ghost" hidden>⚡ Ambil harga kripto dari Indodax</button>
       <div id="priceRows"></div>
       <div class="row end">
         <span class="spacer"></span>
