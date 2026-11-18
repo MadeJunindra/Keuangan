@@ -612,3 +612,5 @@ body.private .invest-split span { filter: blur(8px); }
 .hold-tx small { display: block; color: var(--muted); font-size: .74rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hold-tx > b { font-size: .88rem; white-space: nowrap; }
 body.private .hold-tx > b { filter: blur(8px); }
+.trade-sum .warn { display: block; color: var(--danger); margin-top: 6px; }
+.trade-sum .warn b { color: var(--danger); }

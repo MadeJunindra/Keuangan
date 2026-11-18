@@ -160,8 +160,10 @@ function portfolio(exclude) {
   return Object.values(h).map((s) => {
     s.lots = s.kind === 'saham' ? s.units / LOT : 0;
     s.avg = s.units ? s.cost / s.units : 0;
-    const stored = stocks[priceKey(s.kind, s.code)];
-    s.quote = stored?.quote || (s.hasUsdt && !s.hasIdr ? 'USDT' : 'IDR');
+    // Mata uang harga mengikuti transaksinya. Harga tersimpan dalam mata uang lain (mis. data lama) diabaikan.
+    s.quote = s.hasUsdt && !s.hasIdr ? 'USDT' : 'IDR';
+    const raw = stocks[priceKey(s.kind, s.code)];
+    const stored = raw && (raw.quote || 'IDR') === s.quote ? raw : null;
     // Harga rata-rata ditampilkan dalam mata uang harga aset ini
     s.avgShow = s.quote === 'USDT' ? (s.hasUsdt && !s.hasIdr && s.units ? s.costQ / s.units : (fxRate() ? s.avg / fxRate() : 0)) : s.avg;
     s.price = stored?.price || s.avgShow;
@@ -764,7 +766,7 @@ $('#srcDeleteBtn').addEventListener('click', () => {
 // Biaya perkiraan (bisa diubah per transaksi). Saham: broker + pajak jual 0,1%. Kripto: perkiraan biaya bursa, cek di Indodax.
 const FEE = { saham: { buy: 0.0015, sell: 0.0025 }, kripto: { buy: 0.003, sell: 0.003 } };
 const KIND = { saham: { unit: 'lot', label: 'Saham', ph: 'mis. BBCA' }, kripto: { unit: 'koin', label: 'Kripto', ph: 'mis. BTC' } };
-let editingTradeId = null, feeTouched = false;
+let editingTradeId = null, feeTouched = false, quoteTouched = false;
 const tType = () => document.querySelector('input[name="ttype"]:checked').value;
 const tKind = () => document.querySelector('input[name="tkind"]:checked').value;
 // Angka desimal ala Indonesia: "0,0015" / "1.250.000,5" / "0.0015"
@@ -817,7 +819,15 @@ function autoFee() {
   if ($('#tAccount').value === EXISTING) { $('#tFee').value = ''; return; }
   $('#tFee').value = money(Math.round(grossOf() * FEE[tKind()][type]));
 }
+function syncQuoteUI() {
+  const kind = tKind(), isDiv = tType() === 'div', isExisting = $('#tAccount').value === EXISTING;
+  $('#tQuoteRow').hidden = kind !== 'kripto' || isDiv;
+  $('#tRateWrap').hidden = quoteOf() !== 'USDT';
+  $('#tPriceLabel').textContent = `${isExisting ? 'Harga rata-rata' : 'Harga'} / ${kind === 'kripto' ? `koin (${quoteOf() === 'USDT' ? 'USDT' : 'Rp'})` : 'lembar'}`;
+  if (quoteOf() === 'USDT' && !$('#tRate').value && fxRate()) $('#tRate').value = money(fxRate());
+}
 function updateTradeSummary() {
+  syncQuoteUI();
   const type = tType(), kind = tKind(), code = $('#tCode').value.trim().toUpperCase();
   const owned = code ? ownedQty(kind, code) : 0;
   $('#tOwned').textContent = type === 'sell' && code ? `(punya ${fmtDec(owned)})` : '';
@@ -830,10 +840,12 @@ function updateTradeSummary() {
   const calc = kind === 'kripto'
     ? `${fmtDec(q)} ${esc(code || 'koin')} × ${fmtPrice(price)}${usdt ? ` USDT × Rp${rate.toLocaleString('id-ID')}` : ''}`
     : `${fmtDec(q)} lot × 100 × ${fmtPrice(price)}`;
+  const usdHint = kind === 'kripto' && !usdt && gross < 10000 && price < 1000000
+    ? `<span class="warn">⚠️ Modalnya cuma ${fmt(gross)}. Kalau harga ini dalam USDT/dolar, ubah <b>Dibeli pakai</b> ke <b>USDT</b>.</span>` : '';
   if (type === 'buy' && $('#tAccount').value === EXISTING) {
-    $('#tSummary').innerHTML = `Modal ${calc} = <b>${fmt(gross + fee)}</b><br>📥 Dicatat sebagai aset yang sudah kamu punya. <b>Saldo bank tidak berubah.</b>`;
+    $('#tSummary').innerHTML = `Modal ${calc} = <b>${fmt(gross + fee)}</b><br>📥 Dicatat sebagai aset yang sudah kamu punya. <b>Saldo bank tidak berubah.</b>${usdHint}`;
   } else if (type === 'buy') {
-    $('#tSummary').innerHTML = `${calc} = ${fmt(gross)}<br>Total dibayar <b>${fmt(gross + fee)}</b> dari saldo rekening`;
+    $('#tSummary').innerHTML = `${calc} = ${fmt(gross)}<br>Total dibayar <b>${fmt(gross + fee)}</b> dari saldo rekening${usdHint}`;
   } else {
     const s = portfolio(editingTradeId).find((x) => x.kind === kind && x.code === code);
     const u = unitsOf(kind, q);
@@ -852,7 +864,7 @@ function tradeAccOptions(type, selected) {
 }
 function openTrade(type = 'buy', tx = null, code = '', existing = false, kind = 'saham') {
   kind = tx?.kind || kind;
-  editingTradeId = tx?.id || null; feeTouched = !!tx;
+  editingTradeId = tx?.id || null; feeTouched = !!tx; quoteTouched = !!tx;
   document.querySelector(`input[name="tkind"][value="${kind}"]`).checked = true;
   document.querySelector(`input[name="ttype"][value="${type}"]`).checked = true;
   $('#tradeTitle').textContent = tx ? 'Ubah transaksi investasi' : existing ? 'Masukkan aset lama' : 'Transaksi investasi';
@@ -878,7 +890,7 @@ function openTrade(type = 'buy', tx = null, code = '', existing = false, kind = 
 }
 document.querySelectorAll('input[name="ttype"]').forEach((r) => r.addEventListener('change', applyTradeType));
 document.querySelectorAll('input[name="tkind"]').forEach((r) => r.addEventListener('change', () => {
-  $('#tLots').value = ''; $('#tPrice').value = ''; $('#tQuote').value = 'IDR'; feeTouched = false;
+  $('#tLots').value = ''; $('#tPrice').value = ''; $('#tQuote').value = 'IDR'; feeTouched = false; quoteTouched = false;
   $('#codeList').innerHTML = portfolio().filter((s) => s.kind === tKind()).map((s) => `<option value="${esc(s.code)}">`).join('');
   applyTradeType();
 }));
@@ -892,15 +904,22 @@ $('#holdings').addEventListener('click', (e) => {
 });
 $('#existingBtn').addEventListener('click', () => openTrade('buy', null, '', true));
 ['#tLots', '#tPrice', '#tRate'].forEach((sel) => $(sel).addEventListener('input', () => { if (!feeTouched) autoFee(); updateTradeSummary(); }));
-$('#tQuote').addEventListener('change', () => { $('#tPrice').value = ''; applyTradeType(); });
+['change', 'input'].forEach((ev) => $('#tQuote').addEventListener(ev, () => { quoteTouched = true; if (!feeTouched) autoFee(); updateTradeSummary(); }));
+// Pengaman untuk iPhone: sinkronkan juga saat pilihan ditutup atau saat mengetuk bagian lain form
+['blur', 'focusout'].forEach((ev) => $('#tQuote').addEventListener(ev, () => { if (!feeTouched) autoFee(); updateTradeSummary(); }));
+['click', 'focusin'].forEach((ev) => $('#tradeForm').addEventListener(ev, syncQuoteUI));
 $('#tFee').addEventListener('input', () => { feeTouched = true; updateTradeSummary(); });
 $('#tDiv').addEventListener('input', updateTradeSummary);
 $('#tCode').addEventListener('input', () => {
   const v = $('#tCode').value.toUpperCase().replace(/[^A-Z0-9]/g, '');
   if (v !== $('#tCode').value) $('#tCode').value = v;
+  // Kripto yang sudah dimiliki: ikuti mata uang aset itu, kecuali pengguna sudah memilih sendiri
+  const held = tKind() === 'kripto' && portfolio().find((x) => x.kind === 'kripto' && x.code === v);
+  if (held && !quoteTouched) $('#tQuote').value = held.quote;
   const st = stocks[priceKey(tKind(), v)];
-  if (!$('#tPrice').value && st?.price) {
-    if (tKind() === 'kripto') { $('#tQuote').value = st.quote || 'IDR'; applyTradeType(); }
+  const sameQuote = tKind() !== 'kripto' || (st?.quote || 'IDR') === quoteOf();
+  // Aset lama diisi harga rata-rata beli, jadi harga terakhir tidak diisikan otomatis
+  if (!$('#tPrice').value && st?.price && sameQuote && $('#tAccount').value !== EXISTING) {
     $('#tPrice').value = tKind() === 'kripto' ? decInput(st.price) : money(st.price);
   }
   updateTradeSummary();
@@ -929,7 +948,7 @@ $('#tradeForm').addEventListener('submit', (e) => {
     } else data.amount = gross + data.fee;
     // Harga transaksi terbaru dipakai sebagai harga terakhir
     const k = priceKey(kind, code);
-    if (!stocks[k] || (stocks[k].date || '') <= data.date) stocks[k] = { price: data.price, date: data.date, quote: data.quote };
+    if (!stocks[k] || (stocks[k].quote || 'IDR') !== data.quote || (stocks[k].date || '') <= data.date) stocks[k] = { price: data.price, date: data.date, quote: data.quote };
     if (data.quote === 'USDT' && (!stocks[FX_KEY] || (stocks[FX_KEY].date || '') <= data.date)) stocks[FX_KEY] = { price: data.rate, date: data.date };
   }
   let id = editingTradeId;
@@ -1182,7 +1201,7 @@ $('#importFile').addEventListener('change', async (e) => {
 });
 
 // ---------- PWA ----------
-const APP_VERSION = '12 · 18 Nov 2026';
+const APP_VERSION = '13 · 18 Nov 2026';
 $('#appVersion').textContent = APP_VERSION;
 let swReg = null;
 if ('serviceWorker' in navigator) {
