@@ -565,3 +565,10 @@ body.private .safe-main strong, body.private .invest-sum strong, body.private .i
 body.private .hold-val small, body.private .hero-foot em, body.private .hold-grid b, body.private #hValue { filter: blur(9px); }
 .safe-main small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .safe-days { font-size: .68rem; padding: 4px 8px; align-self: flex-start; }
+.head-links { display: flex; gap: 14px; }
+.hold-empty { display: grid; gap: 10px; justify-items: start; margin: 12px 0 4px; }
+.hold-empty p { margin: 0; line-height: 1.5; }
+.small-btn { padding: 10px 14px; font-size: .88rem; }
+.head-links { gap: 12px; flex: none; }
+.head-links .link-btn { white-space: nowrap; font-size: .85rem; }
+.block-head h2 { white-space: nowrap; }

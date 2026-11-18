@@ -1,5 +1,5 @@
 // Naikkan angka ini (dan APP_VERSION di app.js) setiap kali ada perubahan file.
-const CACHE = 'keuangan-v8';
+const CACHE = 'keuangan-v9';
 const ASSETS = [
   './',
   './index.html',

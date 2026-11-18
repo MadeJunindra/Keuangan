@@ -59,6 +59,7 @@ let txs = loadJSON(STORE_KEY) || [];
 const STOCK_KEY = 'keuangan.stocks.v1';           // harga terakhir per kode saham
 let stocks = loadJSON(STOCK_KEY) || {};
 const PAYDAY_KEY = 'keuangan.payday';
+const EXISTING = '__existing'; // saham yang sudah dimiliki sebelum pakai aplikasi: tidak memotong saldo kas
 migrate();
 let view = new Date(); view.setDate(1);
 let filterAcc = 'all';
@@ -81,7 +82,7 @@ function migrate() {
   if (!accounts.length) accounts = structuredClone(DEFAULT_ACCOUNTS);
   const fallback = payrollAcc().id;
   let changed = false;
-  txs.forEach((t) => { if (!t.account || !accById(t.account)) { t.account = fallback; changed = true; } });
+  txs.forEach((t) => { if (t.account !== EXISTING && (!t.account || !accById(t.account))) { t.account = fallback; changed = true; } });
   // Versi lama belum punya "fungsi rekening"
   accounts.forEach((a) => {
     if (a.role === undefined) {
@@ -109,6 +110,7 @@ function toast(msg) {
 function balances() {
   const bal = Object.fromEntries(accounts.map((a) => [a.id, a.initial || 0]));
   for (const t of txs) {
+    if (t.account === EXISTING) continue; // saham lama: saldo kas tidak berubah
     if (t.type === 'in') bal[t.account] += t.amount;
     else if (t.type === 'out') bal[t.account] -= t.amount;
     else if (t.type === 'transfer') { bal[t.account] -= t.amount; bal[t.to] += t.amount; }
@@ -262,7 +264,9 @@ function renderSummary() {
       <span class="hold-info"><b>${s.lots.toLocaleString('id-ID')} lot</b><small>${Math.round(s.avg).toLocaleString('id-ID')} → ${s.price.toLocaleString('id-ID')}</small></span>
       <span class="hold-val"><b class="money-val">${fmt(s.value)}</b><small class="pl" data-sign="${s.pl >= 0 ? 'up' : 'down'}">${plTxt(s.pl, s.plPct)}</small></span>
     </button>`).join('')
-    : '<p class="muted small hold-empty">Belum ada saham. Catat pembelian pertamamu dengan tombol <b>Beli</b> — uangnya otomatis keluar dari rekening yang kamu pilih, jadi saldo kas dan saham tidak tercampur.</p>';
+    : `<div class="hold-empty"><p class="muted small">Belum ada saham di sini.</p>
+        <button class="btn-primary small-btn" data-existing>📥 Masukkan saham yang sudah kamu punya</button>
+        <p class="muted small">Saham lama dicatat tanpa memotong saldo bank. Untuk pembelian baru, pakai tombol <b>Beli</b>.</p></div>`;
 
   // Jatah aman dibelanjakan hari ini (dari rekening belanja harian)
   const daily = accounts.filter((a) => a.role === 'harian');
@@ -397,10 +401,11 @@ function txRow(t) {
   let icon, title, sub, sign, cls = t.type;
   if (STOCK_TYPES.includes(t.type)) {
     icon = { buy: '📈', sell: '💹', div: '🪙' }[t.type];
-    title = `${{ buy: 'Beli', sell: 'Jual', div: 'Dividen' }[t.type]} ${esc(t.code)}`;
-    sub = t.type === 'div' ? `ke ${tag(acc)}` : `${t.lots.toLocaleString('id-ID')} lot @ ${t.price.toLocaleString('id-ID')} · ${t.type === 'buy' ? 'dari' : 'ke'} ${tag(acc)}`;
-    sign = t.type === 'buy' ? '−' : '+';
+    title = t.account === EXISTING ? `Saham lama ${esc(t.code)}` : `${{ buy: 'Beli', sell: 'Jual', div: 'Dividen' }[t.type]} ${esc(t.code)}`;
+    sub = t.account === EXISTING ? `${t.lots.toLocaleString('id-ID')} lot @ ${t.price.toLocaleString('id-ID')} · tidak memotong saldo` : t.type === 'div' ? `ke ${tag(acc)}` : `${t.lots.toLocaleString('id-ID')} lot @ ${t.price.toLocaleString('id-ID')} · ${t.type === 'buy' ? 'dari' : 'ke'} ${tag(acc)}`;
+    sign = t.account === EXISTING ? '' : t.type === 'buy' ? '−' : '+';
     cls = t.type === 'div' ? 'in' : 'transfer';
+    if (t.account === EXISTING) icon = '📥';
   } else if (t.type === 'transfer') {
     const to = accById(t.to) || { name: '?', color: '#999' };
     icon = '🔁'; title = `Ke ${esc(to.name)}`;
@@ -724,14 +729,19 @@ const tType = () => document.querySelector('input[name="ttype"]:checked').value;
 function ownedLots(code) { return portfolio(editingTradeId).find((s) => s.code === code)?.lots || 0; }
 function applyTradeType() {
   const type = tType(), isDiv = type === 'div';
+  const cur = $('#tAccount').value;
+  if (cur !== undefined) tradeAccOptions(type, cur === EXISTING && type !== 'buy' ? payrollAcc().id : cur || payrollAcc().id);
+  const isExisting = $('#tAccount').value === EXISTING;
   $('#tLotsWrap').hidden = isDiv; $('#tPriceRow').hidden = isDiv; $('#tDivWrap').hidden = !isDiv;
-  $('#tAccLabel').textContent = type === 'buy' ? 'Bayar dari rekening' : 'Uang masuk ke rekening';
-  $('#tFeeHint').textContent = isDiv ? '' : `≈${(FEE[type] * 100).toLocaleString('id-ID')}%`;
+  $('#tAccLabel').textContent = type === 'buy' ? 'Sumber dana' : 'Uang masuk ke rekening';
+  $('#tPrice').previousSibling.textContent = isExisting ? 'Harga rata-rata / lembar' : 'Harga / lembar';
+  $('#tFeeHint').textContent = isDiv || isExisting ? '' : `≈${(FEE[type] * 100).toLocaleString('id-ID')}%`;
   if (!feeTouched) autoFee();
   updateTradeSummary();
 }
 function autoFee() {
   const type = tType(); if (type === 'div') return;
+  if ($('#tAccount').value === EXISTING) { $('#tFee').value = ''; return; }
   const gross = num($('#tLots').value) * LOT * num($('#tPrice').value);
   $('#tFee').value = money(Math.round(gross * FEE[type]));
 }
@@ -743,8 +753,10 @@ function updateTradeSummary() {
   const lots = num($('#tLots').value), price = num($('#tPrice').value), fee = num($('#tFee').value);
   if (!lots || !price) { $('#tSummary').innerHTML = ''; return; }
   const gross = lots * LOT * price;
-  if (type === 'buy') {
-    $('#tSummary').innerHTML = `${lots.toLocaleString('id-ID')} lot × 100 × ${price.toLocaleString('id-ID')} = ${fmt(gross)}<br>Total dibayar <b>${fmt(gross + fee)}</b>`;
+  if (type === 'buy' && $('#tAccount').value === EXISTING) {
+    $('#tSummary').innerHTML = `Modal ${lots.toLocaleString('id-ID')} lot × 100 × ${price.toLocaleString('id-ID')} = <b>${fmt(gross + fee)}</b><br>📥 Dicatat sebagai saham yang sudah kamu punya. <b>Saldo bank tidak berubah.</b>`;
+  } else if (type === 'buy') {
+    $('#tSummary').innerHTML = `${lots.toLocaleString('id-ID')} lot × 100 × ${price.toLocaleString('id-ID')} = ${fmt(gross)}<br>Total dibayar <b>${fmt(gross + fee)}</b> dari saldo rekening`;
   } else {
     const s = portfolio(editingTradeId).find((x) => x.code === code);
     const basis = s && s.lots ? (s.cost / s.lots) * Math.min(lots, s.lots) : 0;
@@ -753,10 +765,17 @@ function updateTradeSummary() {
       (basis ? `<br>Perkiraan ${pl >= 0 ? 'untung' : 'rugi'} <b class="pl" data-sign="${pl >= 0 ? 'up' : 'down'}">${fmt(Math.abs(Math.round(pl)))}</b>` : '');
   }
 }
-function openTrade(type = 'buy', tx = null, code = '') {
+function tradeAccOptions(type, selected) {
+  accOptions($('#tAccount'), selected);
+  if (type === 'buy') {
+    $('#tAccount').insertAdjacentHTML('afterbegin',
+      `<option value="${EXISTING}" ${selected === EXISTING ? 'selected' : ''}>📥 Saham lama (saldo tidak dipotong)</option>`);
+  }
+}
+function openTrade(type = 'buy', tx = null, code = '', existing = false) {
   editingTradeId = tx?.id || null; feeTouched = !!tx;
   document.querySelector(`input[name="ttype"][value="${type}"]`).checked = true;
-  $('#tradeTitle').textContent = tx ? 'Ubah transaksi saham' : 'Transaksi saham';
+  $('#tradeTitle').textContent = tx ? 'Ubah transaksi saham' : existing ? 'Masukkan saham lama' : 'Transaksi saham';
   $('#codeList').innerHTML = portfolio().map((s) => `<option value="${esc(s.code)}">`).join('');
   $('#tCode').value = tx?.code || code;
   $('#tLots').value = money(tx?.lots);
@@ -765,7 +784,7 @@ function openTrade(type = 'buy', tx = null, code = '') {
   $('#tDiv').value = money(tx?.type === 'div' ? tx.amount : '');
   // Rekening default: terakhir dipakai untuk saham, kalau belum ada pakai rekening payroll
   const last = loadJSON('keuangan.last') || {};
-  accOptions($('#tAccount'), tx?.account || (accById(last.stock) ? last.stock : payrollAcc().id));
+  tradeAccOptions(type, tx?.account || (existing ? EXISTING : accById(last.stock) ? last.stock : payrollAcc().id));
   $('#tDate').value = tx?.date || todayISO();
   $('#tNote').value = tx?.note || '';
   $('#tDeleteBtn').hidden = !tx;
@@ -773,6 +792,13 @@ function openTrade(type = 'buy', tx = null, code = '') {
   $('#tradeDialog').showModal();
 }
 document.querySelectorAll('input[name="ttype"]').forEach((r) => r.addEventListener('change', applyTradeType));
+$('#tAccount').addEventListener('change', () => {
+  // Saham lama: yang diisi harga rata-rata, jadi tanpa biaya broker
+  if ($('#tAccount').value === EXISTING) { feeTouched = false; $('#tFee').value = ''; }
+  if (!feeTouched) autoFee(); applyTradeType();
+});
+$('#holdings').addEventListener('click', (e) => { if (e.target.closest('[data-existing]')) openTrade('buy', null, '', true); });
+$('#existingBtn').addEventListener('click', () => openTrade('buy', null, '', true));
 ['#tLots', '#tPrice'].forEach((sel) => $(sel).addEventListener('input', () => { if (!feeTouched) autoFee(); updateTradeSummary(); }));
 $('#tFee').addEventListener('input', () => { feeTouched = true; updateTradeSummary(); });
 $('#tDiv').addEventListener('input', updateTradeSummary);
@@ -808,13 +834,14 @@ $('#tradeForm').addEventListener('submit', (e) => {
   if (id) Object.assign(txs.find((t) => t.id === id), data);
   else { id = uid(); txs.push({ id, created: Date.now(), ...data }); }
   freshId = id;
-  const last = loadJSON('keuangan.last') || {}; last.stock = data.account;
+  const last = loadJSON('keuangan.last') || {}; if (data.account !== EXISTING) last.stock = data.account;
   try { localStorage.setItem('keuangan.last', JSON.stringify(last)); } catch {}
   save();
-  const d = new Date(data.date + 'T00:00'); view = new Date(d.getFullYear(), d.getMonth(), 1);
+  // Pindah ke bulan transaksi, kecuali saham lama (tanggalnya bisa bertahun-tahun lalu)
+  if (data.account !== EXISTING) { const d = new Date(data.date + 'T00:00'); view = new Date(d.getFullYear(), d.getMonth(), 1); }
   render(); buzz();
   if (type === 'div') confetti(40);
-  toast({ buy: `📈 Beli ${code} dicatat`, sell: `💹 Jual ${code} dicatat`, div: `🪙 Dividen ${code} dicatat` }[type]);
+  toast(data.account === EXISTING ? `📥 Saham ${code} ditambahkan (saldo tidak berubah)` : { buy: `📈 Beli ${code} dicatat`, sell: `💹 Jual ${code} dicatat`, div: `🪙 Dividen ${code} dicatat` }[type]);
 });
 $('#tDeleteBtn').addEventListener('click', () => {
   const t = txs.find((x) => x.id === editingTradeId);
@@ -961,7 +988,7 @@ $('#importFile').addEventListener('change', async (e) => {
 });
 
 // ---------- PWA ----------
-const APP_VERSION = '8 · 18 Nov 2026';
+const APP_VERSION = '9 · 18 Nov 2026';
 $('#appVersion').textContent = APP_VERSION;
 let swReg = null;
 if ('serviceWorker' in navigator) {
